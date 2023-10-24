@@ -4,4 +4,8 @@ https://j-paku.github.io/TODO
 
 
 
-[screen-recording (1).webm](https://github.com/J-paku/TODO/assets/127849015/cbf8ae43-835f-488e-8b00-ad9bd8c38c59)
+
+
+
+https://github.com/J-paku/TODO/assets/127849015/94ed03fd-fa11-4718-810f-0b624605c83d
+
