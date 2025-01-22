@@ -13,7 +13,6 @@ graph TD
 
     Rack1 --|Port 50|--> Rack2
     Rack2 --|Port 50|--> Rack1
-# TODO EPPO Ver0.2
 
 
 
