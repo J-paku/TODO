@@ -13,8 +13,3 @@ graph TD
 
     Rack1 --|Port 50|--> Rack2
     Rack2 --|Port 50|--> Rack1
-
-
-
-
-[screen-recording (1).webm](https://github.com/J-paku/TODO/assets/127849015/0e0d2eb1-deed-436b-802f-1c96034ba6e5)
