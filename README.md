@@ -12,8 +12,15 @@ graph LR
         HubB["UXX：裏：XXX"]
     end
 
+    subgraph Rack3["ラック３\n\n\n\n\n"]
+        direction LR
+        HubC["UYY：裏：XXX"]
+    end
+
     Hub1 -- "Port：50 ⇄ Port32" --> HubA
     Hub1 -- "Port：13 ⇄ Port32" --> HubB
+    HubB -- "Port：25 ⇄ Port10" --> HubC
+
 # 섹스
 
 import pandas as pd
@@ -24,6 +31,8 @@ data = [
     {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port:13 → Port32", "TargetRack": "Rack2", "TargetHub": "UXX"},
     {"Rack": "Rack2", "U_Position": "U32", "Side": "裏", "Hub": "HubA"},
     {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB"},
+    {"Rack": "Rack3", "U_Position": "UYY", "Side": "裏", "Hub": "HubC"},  # Rack3 추가
+    {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB", "Port": "Port:25 → Port10", "TargetRack": "Rack3", "TargetHub": "UYY"},  # Rack2와 Rack3 연결
 ]
 
 # DataFrameに変換
