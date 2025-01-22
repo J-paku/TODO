@@ -1,4 +1,4 @@
-# TODO EPPO Ver0.2
+
 ```mermaid
 graph TD
     subgraph Rack1["ラック１"]
@@ -13,7 +13,7 @@ graph TD
 
     Rack1 -- "ポート：５０" --> Rack2
     Rack2 -- "ポート：５０" --> Rack1
-
+# TODO EPPO Ver0.2
 
 
 
