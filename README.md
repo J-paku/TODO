@@ -1,16 +1,17 @@
 
 ```mermaid
-graph TD
-    subgraph Rack1["ラック1"]
-        Hub1["ハブ1"]
-        Hub2["ハブ2"]
+graph LR
+    subgraph Rack1["ラック１\n\n\n\n\n\n"]
+        direction LR
+        Hub1["U35：裏：XXX"]
     end
 
-    subgraph Rack2["ラック2"]
-        HubA["ハブA"]
-        HubB["ハブB"]
+    subgraph Rack2["ラック２\n\n\n\n\n"]
+        direction LR
+        HubA["U32：裏：XXX"]
+        HubB["UXX：裏：XXX"]
     end
 
-    Rack1 --|Port 50|--> Rack2
-    Rack2 --|Port 50|--> Rack1
+    Hub1 -- "Port：50 ⇄ Port32" --> HubA
+    Hub1 -- "Port：13 ⇄ Port32" --> HubB
 # 섹스
