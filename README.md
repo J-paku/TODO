@@ -1,20 +1,5 @@
 # TODO EPPO Ver0.2
-"
-graph TD
-    subgraph Rack1["ラック１"]
-        Hub1["ハブ１"]
-        Hub2["ハブ２"]
-    end
-
-    subgraph Rack2["ラック２"]
-        HubA["ハブA"]
-        HubB["ハブB"]
-    end
-
-    Rack1 -- "ポート：５０" --> Rack2
-    Rack2 -- "ポート：５０" --> Rack1
-"
-
+```mermaid
 graph TD
     subgraph Rack1["ラック１"]
         Hub1["ハブ１"]
