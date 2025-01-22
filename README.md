@@ -27,12 +27,12 @@ import pandas as pd
 
 # データベースから取得したデータ（サンプル）
 data = [
-    {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port:50 → Port32", "TargetRack": "Rack2", "TargetHub": "U32"},
-    {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port:13 → Port32", "TargetRack": "Rack2", "TargetHub": "UXX"},
+    {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port：50 ⇄ Port32", "TargetRack": "Rack2", "TargetHub": "HubA"},
+    {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port：13 ⇄ Port32", "TargetRack": "Rack2", "TargetHub": "HubB"},
     {"Rack": "Rack2", "U_Position": "U32", "Side": "裏", "Hub": "HubA"},
     {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB"},
     {"Rack": "Rack3", "U_Position": "UYY", "Side": "裏", "Hub": "HubC"},  # Rack3 추가
-    {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB", "Port": "Port:25 → Port10", "TargetRack": "Rack3", "TargetHub": "UYY"},  # Rack2와 Rack3 연결
+    {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB", "Port": "Port：25 ⇄ Port10", "TargetRack": "Rack3", "TargetHub": "HubC"},  # Rack2와 Rack3 연결
 ]
 
 # DataFrameに変換
@@ -57,18 +57,15 @@ for rack_name, group in racks:
 
     mermaid_code += "    end\n\n"
 
-# ハブ間の接続を追加
+# ハブ間の接続을 추가
 for _, row in df.iterrows():
     if "Port" in row and pd.notna(row["Port"]) and "TargetRack" in row and pd.notna(row["TargetRack"]):
         source_hub = row["Hub"]
-        target_hub = f'Hub{row["TargetHub"]}'
+        target_hub = row["TargetHub"]  # 원래 Hub 명칭 유지
         port_info = row["Port"]
         mermaid_code += f'    {source_hub} -- "{port_info}" --> {target_hub}\n'
 
-# ファイルに保存
-file_path = "PakuTestText.txt"
-with open(file_path, "w", encoding="utf-8") as file:
-    file.write(mermaid_code)
+# Mermaidコードの出力
+print(mermaid_code)
 
-print(f"Mermaidコードが {file_path} に保存されました。")
 
