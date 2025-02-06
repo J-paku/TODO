@@ -31,14 +31,14 @@ Application (client) ID와 Tenant ID를 확보
 Power BI 관리 포털에서 앱을 Power BI 서비스에 관리자로 추가해야 함
 
 2. PowerShell에서 로그인
-
+```
 $tenantId = "YOUR_TENANT_ID"
 $clientId = "YOUR_CLIENT_ID"
 $clientSecret = "YOUR_CLIENT_SECRET"
 
 # 서비스 주체로 Power BI 로그인
 Connect-PowerBIServiceAccount -ServicePrincipal -TenantId $tenantId -ClientId $clientId -Credential (New-Object System.Management.Automation.PSCredential ($clientId, (ConvertTo-SecureString $clientSecret -AsPlainText -Force)))
-
+```
 주의: 서비스 주체는 Power BI 관리 포털에서 적절한 권한을 설정해야 사용할 수 있습니다.
 
 (3) Windows 인증 기반 로그인 (자동화 시)
