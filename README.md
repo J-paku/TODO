@@ -183,3 +183,88 @@ Power BI Admin Portal 접속 (링크 → 'Admin Portal'로 이동)
 Enable(허용)로 설정되어 있는지 확인 후 Save changes
 ❗ 만약 꺼져 있다면, Power BI 관리자에게 요청하여 활성화해야 합니다.
 서비스 프린시펄(Service Principal)은 기본적으로 Power BI 테넌트에서 막혀 있을 수 있습니다.
+
+
+경계선
+-------------------------------------------
+# Power BI レポートを自動ダウンロード & 古いフォルダ削除 (日本語版)
+
+以下のバッチファイルと PowerShell スクリプトを使用して、Power BI のレポートを 1 日 1 回ダウンロードし、**1 ヶ月前のフォルダを自動削除**します。
+
+---
+
+## **1. PowerShell スクリプト (`Download_PowerBI_Report.ps1`)**
+### **処理内容**
+1. **Power BI にサービスプリンシパルでログイン**
+2. **今日の日付フォルダを作成（例: `2025-02-06`）**
+3. **レポートをダウンロードし、フォルダ内に保存**
+4. **1 ヶ月前のフォルダを削除**
+
+```powershell
+# Power BI サービスアカウントのログイン情報
+$tenantId = "YOUR_TENANT_ID"
+$clientId = "YOUR_CLIENT_ID"
+$clientSecret = "YOUR_CLIENT_SECRET"
+
+# Power BI サインイン (サービスプリンシパル)
+$securePassword = ConvertTo-SecureString $clientSecret -AsPlainText -Force
+$credential = New-Object System.Management.Automation.PSCredential ($clientId, $securePassword)
+Connect-PowerBIServiceAccount -ServicePrincipal -TenantId $tenantId -ClientId $clientId -Credential $credential
+
+# 今日の日付フォルダを作成
+$today = Get-Date -Format "yyyy-MM-dd"
+$folderPath = "C:\PowerBI_Reports\$today"
+
+if (!(Test-Path $folderPath)) {
+    New-Item -ItemType Directory -Path $folderPath | Out-Null
+}
+
+# Power BI レポート情報
+$workspaceId = "YOUR_WORKSPACE_ID"
+$reportId = "YOUR_REPORT_ID"
+$outputFilePath = "$folderPath\PowerBI_Report.pbix"
+
+# Power BI REST API でレポートをエクスポート
+$headers = @{
+    "Content-Type"  = "application/json"
+    "Authorization" = "Bearer $(Get-PowerBIAccessToken)"
+}
+
+$exportUrl = "https://api.powerbi.com/v1.0/myorg/groups/$workspaceId/reports/$reportId/Export"
+
+# レポートをダウンロード
+Invoke-RestMethod -Uri $exportUrl -Headers $headers -Method Get -OutFile $outputFilePath
+
+Write-Host "Power BI レポートのダウンロード完了: $outputFilePath"
+
+# 1 ヶ月前のフォルダを削除
+$oneMonthAgo = (Get-Date).AddMonths(-1).ToString("yyyy-MM-dd")
+$oldFolderPath = "C:\PowerBI_Reports\$oneMonthAgo"
+
+if (Test-Path $oldFolderPath) {
+    Remove-Item -Path $oldFolderPath -Recurse -Force
+    Write-Host "1 ヶ月前のフォルダを削除: $oldFolderPath"
+}
+
+
+경계선
+-----------------------------------------------------------
+```
+@echo off
+powershell -ExecutionPolicy Bypass -File "C:\Scripts\Download_PowerBI_Report.ps1"
+exit
+```
+
+基本タスクの作成 をクリック
+タスクの名前: PowerBI_Report_Download
+トリガー: 毎日 → 時間を設定
+操作: プログラムの開始
+プログラム/スクリプト: C:\Scripts\Download_Report.bat
+完了 をクリックして設定を保存
+
+# 確認ポイント
+Power BI の API 権限が設定されているか
+Power BI の管理ポータルでサービスプリンシパルが有効になっているか
+スクリプトの保存場所 (C:\Scripts\) を変更する場合は、バッチファイルと PowerShell スクリプトのパスを修正
+タスクスケジューラで 毎日 1 回 実行されるよう設定
+
