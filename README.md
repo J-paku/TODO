@@ -1,71 +1,74 @@
+Power BI PowerShell 로그인 방법
 
-```mermaid
-graph LR
-    subgraph Rack1["ラック１\n\n\n\n\n\n"]
-        direction LR
-        Hub1["U35：裏：XXX"]
-    end
+Power BI에 PowerShell 명령어만으로 로그인하는 방법은 Azure AD 인증을 사용하여 Power BI REST API에 로그인하는 방식으로 가능합니다. 주로 Connect-PowerBIServiceAccount 명령어를 사용하며, 경우에 따라 서비스 주체(Service Principal)나 인증서 기반 인증을 활용할 수도 있습니다.
 
-    subgraph Rack2["ラック２\n\n\n\n\n"]
-        direction LR
-        HubA["U32：裏：XXX"]
-        HubB["UXX：裏：XXX"]
-    end
+1. PowerShell을 사용한 Power BI 로그인 방법
 
-    subgraph Rack3["ラック３\n\n\n\n\n"]
-        direction LR
-        HubC["UYY：裏：XXX"]
-    end
+(1) Microsoft 계정(MSA) 또는 조직 계정(Azure AD)으로 로그인
 
-    Hub1 -- "Port：50 ⇄ Port32" --> HubA
-    Hub1 -- "Port：13 ⇄ Port32" --> HubB
-    HubB -- "Port：25 ⇄ Port10" --> HubC
+기본적으로 Azure AD 계정을 사용하여 Power BI에 로그인하려면 다음 명령어를 실행합니다.
 
-# 섹스
+Install-Module -Name MicrosoftPowerBIMgmt
+Import-Module MicrosoftPowerBIMgmt
 
-import pandas as pd
+# Power BI 서비스 계정에 로그인
+Connect-PowerBIServiceAccount
 
-# データベースから取得したデータ（サンプル）
-data = [
-    {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port：50 ⇄ Port32", "TargetRack": "Rack2", "TargetHub": "HubA"},
-    {"Rack": "Rack1", "U_Position": "U35", "Side": "裏", "Hub": "Hub1", "Port": "Port：13 ⇄ Port32", "TargetRack": "Rack2", "TargetHub": "HubB"},
-    {"Rack": "Rack2", "U_Position": "U32", "Side": "裏", "Hub": "HubA"},
-    {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB"},
-    {"Rack": "Rack3", "U_Position": "UYY", "Side": "裏", "Hub": "HubC"},  # Rack3 추가
-    {"Rack": "Rack2", "U_Position": "UXX", "Side": "裏", "Hub": "HubB", "Port": "Port：25 ⇄ Port10", "TargetRack": "Rack3", "TargetHub": "HubC"},  # Rack2와 Rack3 연결
-]
+실행하면 로그인 창이 팝업되어 자격 증명을 입력해야 합니다.
 
-# DataFrameに変換
-df = pd.DataFrame(data)
+(2) 서비스 주체(Service Principal)를 사용한 로그인 (클라이언트 ID + 비밀키)
 
-# Mermaidコードの作成
-mermaid_code = "graph LR\n"
+대화형 로그인 없이 PowerShell에서 인증하려면 **서비스 주체(앱 등록)**을 사용해야 합니다.
 
-# ラックごとにグループ化
-racks = df.groupby("Rack")
+1. Azure Portal에서 앱 등록 (App Registration)
 
-for rack_name, group in racks:
-    mermaid_code += f'    subgraph {rack_name}["{rack_name}\\n\\n\\n\\n"]\n'
-    mermaid_code += "        direction LR\n"
+Azure Portal에서 Azure AD > 앱 등록에서 새 애플리케이션을 등록
 
-    # ハブを追加
-    for _, row in group.iterrows():
-        hub_id = row["Hub"]
-        position = row["U_Position"]
-        side = row["Side"]
-        mermaid_code += f'        {hub_id}["{position}：{side}：XXX"]\n'
+Application (client) ID와 Tenant ID를 확보
 
-    mermaid_code += "    end\n\n"
+클라이언트 비밀(Client Secret) 생성 후 저장
 
-# ハブ間の接続을 추가
-for _, row in df.iterrows():
-    if "Port" in row and pd.notna(row["Port"]) and "TargetRack" in row and pd.notna(row["TargetRack"]):
-        source_hub = row["Hub"]
-        target_hub = row["TargetHub"]  # 원래 Hub 명칭 유지
-        port_info = row["Port"]
-        mermaid_code += f'    {source_hub} -- "{port_info}" --> {target_hub}\n'
+Power BI 관리 포털에서 앱을 Power BI 서비스에 관리자로 추가해야 함
 
-# Mermaidコードの出力
-print(mermaid_code)
+2. PowerShell에서 로그인
 
+$tenantId = "YOUR_TENANT_ID"
+$clientId = "YOUR_CLIENT_ID"
+$clientSecret = "YOUR_CLIENT_SECRET"
 
+# 서비스 주체로 Power BI 로그인
+Connect-PowerBIServiceAccount -ServicePrincipal -TenantId $tenantId -ClientId $clientId -Credential (New-Object System.Management.Automation.PSCredential ($clientId, (ConvertTo-SecureString $clientSecret -AsPlainText -Force)))
+
+주의: 서비스 주체는 Power BI 관리 포털에서 적절한 권한을 설정해야 사용할 수 있습니다.
+
+(3) Windows 인증 기반 로그인 (자동화 시)
+
+Azure AD 계정이 Windows 인증을 지원할 경우, -Credential 옵션을 사용하여 PowerShell에서 로그인할 수도 있습니다.
+
+$UserCredential = Get-Credential  # 팝업 창에서 사용자 입력 가능
+Connect-PowerBIServiceAccount -Credential $UserCredential
+
+2. 로그인 후 실행 가능한 작업
+
+(1) 현재 로그인된 사용자 정보 확인
+
+Get-PowerBIUser
+
+(2) 현재 워크스페이스 목록 가져오기
+
+Get-PowerBIWorkspace
+
+(3) 특정 데이터셋 새로 고침
+
+$datasetId = "YOUR_DATASET_ID"
+Invoke-PowerBIRestMethod -Url "groups/{workspaceId}/datasets/$datasetId/refreshes" -Method Post
+
+3. 로그인 자동화 가능 여부
+
+대화형 로그인 없이 실행 가능: 서비스 주체(Service Principal)를 사용하면 암호 없이 로그인 가능
+
+보안 문제 고려: 클라이언트 비밀 또는 인증서를 안전한 저장소에 보관해야 함
+
+Windows 인증 가능: Azure AD와 Windows 인증이 연동된 경우 자동 로그인 가능
+
+PowerShell 명령어만으로 Power BI 로그인은 가능하지만, 대화형 로그인 없이 자동화하려면 서비스 주체 인증을 활용하는 것이 일반적입니다.
