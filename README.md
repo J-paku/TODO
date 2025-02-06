@@ -1,4 +1,4 @@
-| 区分 | GUIログイン (ユーザーアカウント) | サービスプリンシパル (アプリ認証) |
+`| 区分 | GUIログイン (ユーザーアカウント) | サービスプリンシパル (アプリ認証) |
 |------|----------------------------|-------------------------------|
 | **Power BI 設定の必要性** | ❌ 必要なし | ✅ 必要 (管理者の承認) |
 | **Azure AD の権限の必要性** | ❌ 必要なし | ✅ 必要 (API 権限の承認) |
@@ -138,7 +138,7 @@ Power BI 서비스에서 서비스 주체(Service Principal)를 활성화해야 
 ## 2. **PowerShell 스크립트 작성**
 Power BI에 **로그인 후 보고서 파일을 다운로드**하는 PowerShell 스크립트입니다.
 
-```powershell
+```
 # Power BI 서비스 계정 로그인 (서비스 주체 방식)
 $tenantId = "YOUR_TENANT_ID"
 $clientId = "YOUR_CLIENT_ID"
@@ -169,7 +169,7 @@ $exportUrl = "https://api.powerbi.com/v1.0/myorg/groups/$workspaceId/reports/$re
 Invoke-RestMethod -Uri $exportUrl -Headers $headers -Method Get -OutFile $outputFilePath
 
 Write-Host "Power BI 보고서 다운로드 완료: $outputFilePath"
-
+```
 경계선
 -------------------------
 Power BI 테넌트 설정에서 Service Principal 사용 허용 여부 확인
