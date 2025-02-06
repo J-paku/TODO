@@ -161,3 +161,16 @@ Invoke-RestMethod -Uri $exportUrl -Headers $headers -Method Get -OutFile $output
 
 Write-Host "Power BI 보고서 다운로드 완료: $outputFilePath"
 
+경계선
+-------------------------
+Power BI 테넌트 설정에서 Service Principal 사용 허용 여부 확인
+Power BI에서는 Service Principal을 사용하려면 관리자 설정을 변경해야 합니다.
+Power BI 관리자(Admin Portal)에서 설정이 되어 있는지 확인하세요.
+
+🔹 확인 방법 (관리자 계정 필요)
+
+Power BI Admin Portal 접속 (링크 → 'Admin Portal'로 이동)
+"Tenant Settings" → "Developer Settings" → "Allow service principals to use Power BI APIs" 확인
+Enable(허용)로 설정되어 있는지 확인 후 Save changes
+❗ 만약 꺼져 있다면, Power BI 관리자에게 요청하여 활성화해야 합니다.
+서비스 프린시펄(Service Principal)은 기본적으로 Power BI 테넌트에서 막혀 있을 수 있습니다.
