@@ -200,7 +200,7 @@ Enable(허용)로 설정되어 있는지 확인 후 Save changes
 3. **レポートをダウンロードし、フォルダ内に保存**
 4. **1 ヶ月前のフォルダを削除**
 
-```powershell
+```
 # Power BI サービスアカウントのログイン情報
 $tenantId = "YOUR_TENANT_ID"
 $clientId = "YOUR_CLIENT_ID"
@@ -245,7 +245,7 @@ if (Test-Path $oldFolderPath) {
     Remove-Item -Path $oldFolderPath -Recurse -Force
     Write-Host "1 ヶ月前のフォルダを削除: $oldFolderPath"
 }
-
+```
 
 경계선
 -----------------------------------------------------------
