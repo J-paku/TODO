@@ -86,3 +86,57 @@ INNER JOIN CTE ON KV.伝票NO = CTE.伝票NO
                AND FORMAT(KV.伝票日付, 'yyyy/MM') = CTE.伝票年月
 WHERE KV.相手科目コード = '3999'
 ORDER BY 伝票年月, 取引先名 DESC;
+
+
+새ㄱ스
+
+DECLARE @会計年度 NVARCHAR(10) = '2024';
+DECLARE @取引先コード NVARCHAR(15) = '1324400100';
+DECLARE @取引先名 NVARCHAR(15) = 'シーティープランニング';
+DECLARE @開始年月 NVARCHAR(7);
+DECLARE @終了年月 NVARCHAR(7);
+
+-- 해당 회계연도의 4월부터 다음 해 3월까지 범위 설정
+SET @開始年月 = @会計年度 + '/04';
+SET @終了年月 = CAST(CAST(@会計年度 AS INT) + 1 AS NVARCHAR(10)) + '/03';
+
+WITH CTE AS (
+    -- 해당 회계연도의 4월~3월 사이에 `相手科目コード = '3999'` 데이터를 가져옴
+    SELECT DISTINCT 伝票NO, FORMAT(伝票日付, 'yyyy/MM') AS 伝票年月
+    FROM [Integration].[dbo].[会計_V_部門別科目別補助元帳]
+    WHERE FORMAT(伝票日付, 'yyyy/MM') BETWEEN @開始年月 AND @終了年月
+      AND 相手科目コード = '3999'
+)
+
+-- 두 개의 쿼리를 합침
+SELECT 会社コード, 会計年度, NULL AS 伝票日付,
+       FORMAT(KV.[伝票日付], 'yyyy/MM') AS 伝票年月,
+       部門コード, 部門名称, 科目コード,
+       CASE WHEN 科目名称 = '未払金' THEN '消耗品費 他' ELSE 科目名称 END AS 科目名称,
+       伝票NO, 検索NO, 取引先コード, 取引先名, 摘要, 貸方金額, 借方金額,
+       CASE WHEN 科目コード = '41200' AND 相手科目コード IN ('81352', '82855') AND 伝票NO = 伝票NO THEN '82855' ELSE 相手科目コード END AS 相手科目コード,
+       相手科目名称, NULL AS 消費税コード, NULL AS 消費税率,
+       CASE WHEN 相手科目コード = '3999' THEN 0 ELSE 貸方金額 END AS 税込金額
+FROM [Integration].[dbo].[会計_V_部門別科目別補助元帳] AS KV
+WHERE 会社コード = '9999' 
+  AND 会計年度 = @会計年度
+  AND 取引先コード = @取引先コード
+  AND 貸方金額 IS NOT NULL
+  AND 科目コード <> '41200'
+  AND 伝票NO IN (SELECT 伝票NO FROM CTE)
+
+UNION ALL
+
+SELECT 会社コード, 会計年度, 伝票日付,
+       FORMAT(KV.[伝票日付], 'yyyy/MM') AS 伝票年月,
+       部門コード, 部門名称, 科目コード,
+       CASE WHEN 科目名称 = '未払金' THEN '消耗品費 他' ELSE 科目名称 END AS 科目名称,
+       伝票NO, 検索NO, 取引先コード, 取引先名, 摘要, 貸方金額, 借方金額,
+       CASE WHEN 科目コード = '41200' AND 相手科目コード IN ('81352', '82855') AND 伝票NO = 伝票NO THEN '82855' ELSE 相手科目コード END AS 相手科目コード,
+       相手科目名称, ISNULL(消費税コード, 0) AS 消費税コード,
+       CASE WHEN 消費税コード = 20 THEN 0 ELSE ISNULL(消費税率, 0) END AS 消費税率,
+       CAST(KV.[借方金額] * (1 + CASE WHEN 消費税コード = 20 THEN 0 ELSE ISNULL(消費税率, 0) END / 100) AS INT) AS 税込金額
+FROM [Integration].[dbo].[会計_V_部門別科目別補助元帳] AS KV
+WHERE 伝票NO IN (SELECT 伝票NO FROM CTE)
+  AND 相手科目コード = '3999'
+ORDER BY 伝票年月, 取引先名 DESC;
