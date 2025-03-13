@@ -1,3 +1,5 @@
+import re
+
 data = [
     "N2018995 <==>|LAN ⇄ GE0| N2046376",
     "N2050402 <==>|Port 45 ⇄ Port 1| N2051329",
@@ -9,7 +11,26 @@ data = [
     "N2051564 <==>|LAN1 ⇄ Port 33| N2051610"
 ]
 
-⇄를 기준으로 왼쪽인 N2018995와 LAN이랑 같은 값은 하고 있는
-⇄ 기준 오른쪽에 있는 LAN| N2018995
-데이터를 완전 삭제하고 싶어위의 값은 예를들어서이고 항상 바뀌는 동적인 값이야
-파이썬 코드로 만들어줘
+# ⇄ 기준 왼쪽에 있는 값을 추출
+left_side_values = set()
+for entry in data:
+    match = re.match(r"(\S+) <==>\|(.+?) ⇄ (.+?)\| (\S+)", entry)
+    if match:
+        left_id, left_label, right_label, right_id = match.groups()
+        left_side_values.add(left_id)
+        left_side_values.add(left_label.strip())
+
+# 삭제할 데이터 찾기
+filtered_data = []
+for entry in data:
+    match = re.match(r"(\S+) <==>\|(.+?) ⇄ (.+?)\| (\S+)", entry)
+    if match:
+        left_id, left_label, right_label, right_id = match.groups()
+        right_condition = f"{right_label.strip()}| {right_id}"
+        if right_id in left_side_values and right_condition in entry:
+            continue  # 삭제 조건에 맞으면 건너뛴다.
+        filtered_data.append(entry)
+
+# 결과 출력
+for line in filtered_data:
+    print(line)
