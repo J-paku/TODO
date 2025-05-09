@@ -56,3 +56,50 @@ const BluetoothDeviceList: React.FC = () => {
 };
 
 export default BluetoothDeviceList;
+
+
+ㅅㅔㄱ
+
+import React, { useState } from "react";
+
+interface BluetoothDevice {
+  name?: string;
+  id: string;
+}
+
+const BluetoothDeviceList: React.FC = () => {
+  const [devices, setDevices] = useState<BluetoothDevice[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const requestBluetoothDevices = async () => {
+    setError(null);
+
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ["battery_service"],
+      });
+
+      if (device.name) {
+        const newDevice = { name: device.name, id: device.id };
+        setDevices((prev) => [...prev, newDevice]);
+
+        // 리스트를 콘솔에 출력
+        console.log("Detected Devices:", [...devices, newDevice]);
+      } else {
+        console.warn("이름이 없는 기기는 무시됩니다.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+      console.error(err);
+    }
+  };
+
+  return (
+    <>
+      <button onClick={requestBluetoothDevices}>Scan for Devices</button>
+    </>
+  );
+};
+
+export default BluetoothDeviceList;
