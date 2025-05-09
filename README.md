@@ -1,37 +1,58 @@
-<style>
-  @page {
-    size: 43mm 80mm;
-    margin: 0;
-  }
-  body {
-    width: 43mm;
-    height: 80mm;
-    margin: 0;
-    padding: 0;
-  }
-</style>
+npm install react-use
 
-const htmlContent = `
-  <html>
-    <head>
-      <style>
-        @page { size: 43mm 80mm; margin: 0; }
-        body { width: 43mm; height: 80mm; margin: 0; padding: 0; }
-        .label { font-size: 12pt; padding: 5mm; }
-      </style>
-    </head>
-    <body>
-      <div class="label">
-        <div>得意先名: ${selectedItem.title}</div>
-        <div>住所: ${selectedItem.住所}</div>
-        <div>連絡先: ${selectedItem.連絡先}</div>
-      </div>
-    </body>
-  </html>
-`;
+import React, { useState } from "react";
 
-const { uri } = await Print.printToFileAsync({ html: htmlContent });
-await Sharing.shareAsync(uri);
+interface BluetoothDevice {
+  name?: string;
+  id: string;
+}
 
-	•	react-native-thermal-receipt-printer 같은 라이브러리 이용하여 직접 프린터 제어.
-	•	**ZPL (Zebra Printer Language)**로 라벨 작성 → 프린터 전송
+const BluetoothDeviceList: React.FC = () => {
+  const [devices, setDevices] = useState<BluetoothDevice[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const requestBluetoothDevices = async () => {
+    setError(null);
+
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ["battery_service"], // 원하는 서비스 UUID
+      });
+
+      if (device.name) {
+        setDevices((prev) => [
+          ...prev,
+          { name: device.name, id: device.id },
+        ]);
+      } else {
+        console.warn("이름이 없는 기기는 무시됩니다.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  return (
+    <div>
+      <h1>Bluetooth Device Scanner</h1>
+      <button onClick={requestBluetoothDevices}>Scan for Devices</button>
+      
+      {error && <p style={{ color: "red" }}>{error}</p>}
+      
+      {devices.length > 0 ? (
+        <ul>
+          {devices.map((device) => (
+            <li key={device.id}>
+              {device.name} (ID: {device.id})
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No devices found</p>
+      )}
+    </div>
+  );
+};
+
+export default BluetoothDeviceList;
