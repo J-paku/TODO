@@ -1,105 +1,21 @@
-npm install react-use
+1. Xcode에서 새로운 Swift 프로젝트 생성하기
+Xcode 열기 → Create a new project → App
 
-import React, { useState } from "react";
+프로젝트 이름: MyWebApp
 
-interface BluetoothDevice {
-  name?: string;
-  id: string;
-}
+언어: Swift
 
-const BluetoothDeviceList: React.FC = () => {
-  const [devices, setDevices] = useState<BluetoothDevice[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const requestBluetoothDevices = async () => {
-    setError(null);
-
-    try {
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ["battery_service"], // 원하는 서비스 UUID
-      });
-
-      if (device.name) {
-        setDevices((prev) => [
-          ...prev,
-          { name: device.name, id: device.id },
-        ]);
-      } else {
-        console.warn("이름이 없는 기기는 무시됩니다.");
-      }
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  };
-
-  return (
-    <div>
-      <h1>Bluetooth Device Scanner</h1>
-      <button onClick={requestBluetoothDevices}>Scan for Devices</button>
-      
-      {error && <p style={{ color: "red" }}>{error}</p>}
-      
-      {devices.length > 0 ? (
-        <ul>
-          {devices.map((device) => (
-            <li key={device.id}>
-              {device.name} (ID: {device.id})
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p>No devices found</p>
-      )}
-    </div>
-  );
-};
-
-export default BluetoothDeviceList;
+Interface: Storyboard 또는 SwiftUI (SwiftUI 추천)
 
 
-ㅅㅔㄱ
+2. Info.plist 설정하기
+Info.plist 파일에서 App Transport Security 설정을 추가해야 함.
 
-import React, { useState } from "react";
-
-interface BluetoothDevice {
-  name?: string;
-  id: string;
-}
-
-const BluetoothDeviceList: React.FC = () => {
-  const [devices, setDevices] = useState<BluetoothDevice[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const requestBluetoothDevices = async () => {
-    setError(null);
-
-    try {
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ["battery_service"],
-      });
-
-      if (device.name) {
-        const newDevice = { name: device.name, id: device.id };
-        setDevices((prev) => [...prev, newDevice]);
-
-        // 리스트를 콘솔에 출력
-        console.log("Detected Devices:", [...devices, newDevice]);
-      } else {
-        console.warn("이름이 없는 기기는 무시됩니다.");
-      }
-    } catch (err) {
-      setError((err as Error).message);
-      console.error(err);
-    }
-  };
-
-  return (
-    <>
-      <button onClick={requestBluetoothDevices}>Scan for Devices</button>
-    </>
-  );
-};
-
-export default BluetoothDeviceList;
+Info.plist에 추가:
+```
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+</dict>
+```
