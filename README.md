@@ -144,3 +144,127 @@ Phomemo M120에서 전송하는 패킷 구조를 파악한 후, 해당 패킷을
 
 이제 이 구조를 기본으로 잡고, Bluetooth 통신 로직을 추가할 준비를 하면 돼.
 어느 부분부터 시작할지 말해주면 거기부터 바로 시작하자. ✅🙂👍
+
+
+## 밑에부턴 PWA를 감싸는 방법!
+Next.js PWA를 Swift WebView로 감싸는 코드로 수정하기
+PWA에서 Service Worker 및 Manifest 파일이 정상적으로 동작하도록 WebView 설정을 변경해야 함.
+
+WebView에서 앱 내에서 페이지 간 이동을 허용하도록 구성해야 함.
+
+Info.plist 수정
+- WebView에서 PWA의 모든 리소스(이미지, JS, CSS 등)에 접근할 수 있도록 허용해야 함.
+```
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key>
+    <true/>
+</dict>
+<key>WKAppBoundDomains</key>
+<array>
+    <string>your-pwa-url.com</string>
+</array>
+```
+
+ViewController.swift - PWA 대응 버전
+WKWebViewConfiguration에 Service Worker 지원 및 캐시 관리 설정 추가.
+```
+import UIKit
+import WebKit
+
+class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+
+    var webView: WKWebView!
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        let webConfiguration = WKWebViewConfiguration()
+
+        // Service Worker 허용
+        webConfiguration.setValue(true, forKey: "allowsInlineMediaPlayback")
+        webConfiguration.setValue(true, forKey: "allowUniversalAccessFromFileURLs")
+        webConfiguration.setValue(true, forKey: "allowFileAccessFromFileURLs")
+
+        // WebView 초기화
+        webView = WKWebView(frame: self.view.bounds, configuration: webConfiguration)
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        view.addSubview(webView)
+
+        // PWA URL
+        let pwaURLString = "https://your-pwa-url.com"
+        if let url = URL(string: pwaURLString) {
+            let request = URLRequest(url: url)
+            webView.load(request)
+        }
+    }
+
+    // 팝업 허용
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        webView.load(navigationAction.request)
+        return nil
+    }
+}
+```
+
+Next.js에서 추가해야 할 설정
+Next.js에서 PWA가 정상적으로 동작하도록 하기 위해서는 next-pwa 설정이 필요하다.
+
+1. next.config.js:
+```
+const withPWA = require("next-pwa")({
+  dest: "public",
+  register: true,
+  skipWaiting: true,
+});
+
+module.exports = withPWA({
+  reactStrictMode: true,
+});
+```
+
+2. public/manifest.json:
+```
+{
+  "name": "My PWA App",
+  "short_name": "PWA",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
+```
+
+3.public/sw.js (Service Worker):
+```
+self.addEventListener("install", (event) => {
+  console.log("Service Worker: Installed");
+});
+
+self.addEventListener("fetch", (event) => {
+  console.log("Fetching:", event.request.url);
+});
+```
+
+PWA는 Service Worker, Cache Storage 등을 통해 오프라인 동작을 지원하므로,
+WebView에서 이를 허용하려면 WKWebViewConfiguration에서 적절한 설정을 추가해야 한다.
+
+또한, Next.js PWA가 올바르게 로드되려면, Next.js의 PWA 설정도 맞춰줘야 함.
+
+이제 이 구조를 기반으로 Bluetooth 통신 로직을 추가할 준비를 하면 됨.
+
+이제 BluetoothManager.swift를 만들어서 통신 로직을 추가할까?
+아니면 WebView에서 iOS로 데이터를 전송하는 통신 구조부터 추가할까? 결정해줘. 
