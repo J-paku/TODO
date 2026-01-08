@@ -212,7 +212,9 @@ const handleClick = useCallback(
       setLoading,
     ]
   )
-  ```
+```
+
+```
 export const getSteptaskSyouhin = async (tokuisaki: string) => {
   const url = TOUEN_API_ENDPOINTS.ITEMS_GET
   const pageSize = 200
@@ -384,5 +386,3 @@ export const getSteptaskSyouhin = async (tokuisaki: string) => {
   }
 }
 ```
-
-  
