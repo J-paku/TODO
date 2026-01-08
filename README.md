@@ -31,7 +31,7 @@ type TouenRow = {
   creator?: string
 }
 
-/** おむつ履歴テーブルの列定義 */
+/** おむつ履歴テーブルの列定義（幅: 60% / 25% / 15%） */
 export const touenListColumns: HistoryTableColumn<TouenRow>[] = [
   {
     key: 'clients_name',
@@ -57,7 +57,7 @@ export const touenListColumns: HistoryTableColumn<TouenRow>[] = [
   },
 ]
 
-/** クレーム履歴テーブルの列定義 */
+/** クレーム履歴テーブルの列定義（元コードの min-w を維持しつつ固定幅化させる前提） */
 export const claimHistoryColumns: HistoryTableColumn<ClaimClient>[] = [
   {
     key: 'status',
@@ -153,7 +153,7 @@ export type HistoryTableProps<T extends BaseRow = BaseRow> = {
 
 /** タッチスクロールとロングタップ判定用のしきい値(px) */
 const SCROLL_THRESHOLD_PX = 8
-/** 仮想スクロール用の推定行高さ（px） */
+/** 仮想スクロール用の推定行高さ（px) */
 const ESTIMATED_ROW_HEIGHT = 40
 /** 画面外に余分に描画しておく行数 */
 const OVERSCAN_COUNT = 5
@@ -183,6 +183,20 @@ const alignClass = (align?: 'left' | 'center' | 'right') => {
     default:
       return 'text-left'
   }
+}
+
+/**
+ * headerClassName から w-[..] / min-w-[..] を抽出して colgroup に適用する。
+ * - table-layout: fixed の場合、col の width が最優先され、内容で幅が変わらない。
+ * - min-w しかない列は、同値を width として扱い「旧コードの見え方」を維持する。
+ */
+const extractFixedWidth = (headerClassName?: string): string | undefined => {
+  if (!headerClassName) return undefined
+  const w = headerClassName.match(/(?:^|\s)w-\[([^\]]+)\]/)?.[1]
+  if (w) return w
+  const minW = headerClassName.match(/(?:^|\s)min-w-\[([^\]]+)\]/)?.[1]
+  if (minW) return minW
+  return undefined
 }
 
 function HistoryTableInner<T extends BaseRow = BaseRow>({
@@ -225,9 +239,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
       const key = col.key as string
       const values = rows.map(r => {
         const raw = r?.[key]
-        if (typeof raw === 'string') {
-          return raw.trim()
-        }
+        if (typeof raw === 'string') return raw.trim()
         return raw
       })
       map[key] = Array.from(new Set(values))
@@ -238,11 +250,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
   /** フィルタ状態と、どの列のフィルタモーダルが開いているか */
   const [filters, setFilters] = useState<FilterState>({})
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null)
-  const handleClearFilters = () => {
-    hapticOn()
-    setFilters({})
-    setOpenFilterKey(null)
-  }
 
   /** フィルタ適用後の行リスト（文字列は前後の空白を除いて比較） */
   const filteredRows = useMemo(() => {
@@ -257,7 +264,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
 
         const raw = row[key]
         const value = typeof raw === 'string' ? raw.trim() : raw
-
         return set.has(value)
       })
     )
@@ -271,7 +277,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
         if (allValues.length === 0) return prev
 
         const current = prev[field]
-
         const copy = { ...prev }
 
         // 何か一つでも選択されている → 一旦「全解除」
@@ -298,17 +303,13 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
         if (allValues.length === 0) return prev
 
         const normalizedAllValues = allValues.map(v => (typeof v === 'string' ? v.trim() : v))
-
         const current = prev[field] ?? new Set(normalizedAllValues)
         const next = new Set(current)
 
         const normalizedValue = typeof value === 'string' ? value.trim() : value
 
-        if (next.has(normalizedValue)) {
-          next.delete(normalizedValue)
-        } else {
-          next.add(normalizedValue)
-        }
+        if (next.has(normalizedValue)) next.delete(normalizedValue)
+        else next.add(normalizedValue)
 
         // 全ての値が選択されている状態になったらフィルタ自体を削除
         if (next.size === normalizedAllValues.length) {
@@ -317,10 +318,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
           return copy
         }
 
-        return {
-          ...prev,
-          [field]: next,
-        }
+        return { ...prev, [field]: next }
       })
     },
     [uniqueValuesByColumn]
@@ -340,17 +338,13 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
   const handleGlobalTouchMove = (e: React.TouchEvent) => {
     if (pullStartY.current !== null) {
       const offset = e.touches[0].clientY - pullStartY.current
-      if (offset > refreshOffset) {
-        isPulling.current = true
-      }
+      if (offset > refreshOffset) isPulling.current = true
     }
   }
 
   /** プルダウン終了時、しきい値を超えていればリフレッシュを実行 */
   const handleGlobalTouchEnd = () => {
-    if (isPulling.current) {
-      onRefresh?.()
-    }
+    if (isPulling.current) onRefresh?.()
     pullStartY.current = null
     isPulling.current = false
   }
@@ -366,24 +360,8 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
   useEffect(() => {
     const el = scrollContainerRef?.current
     if (!el) return
-
-    if (openFilterKey) {
-      el.style.overflow = 'hidden'
-    } else {
-      el.style.overflow = 'auto'
-    }
-  }, [openFilterKey, scrollContainerRef])
-
-  /** フィルタモーダル表示中は縦横スクロールをロック */
-  useEffect(() => {
-    const el = scrollContainerRef?.current
-    if (!el) return
-
-    if (openFilterKey) {
-      el.style.overflow = 'hidden'
-    } else {
-      el.style.overflow = 'auto'
-    }
+    if (openFilterKey) el.style.overflow = 'hidden'
+    else el.style.overflow = 'auto'
   }, [openFilterKey, scrollContainerRef])
 
   /** 初回レンダリング時にビューポート高さを取得 */
@@ -400,14 +378,11 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
     }
   }, [rows, scrollContainerRef])
 
-  /** スクロール位置の保存（行変更時の復元用） */
-
-  /* スクロール位置監視＋iOSダブルタップ拡大防止＋プルダウンリフレッシュのイベント登録 */
+  /** スクロール位置監視＋iOSダブルタップ拡大防止＋プルダウンリフレッシュのイベント登録 */
   useLayoutEffect(() => {
     const el = scrollContainerRef?.current
     if (!el) return
 
-    // 初期ビューポート高さセット
     setViewportHeight(el.clientHeight)
 
     const onScroll = () => {
@@ -420,13 +395,10 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
     let lastTapTime = 0
     const preventDoubleTapZoom = (e: TouchEvent) => {
       const now = Date.now()
-      if (now - lastTapTime < 300) {
-        e.preventDefault()
-      }
+      if (now - lastTapTime < 300) e.preventDefault()
       lastTapTime = now
     }
 
-    // プルダウン開始／移動／終了
     const onGlobalTouchStart = (e: TouchEvent) => {
       if (el.scrollTop === 0) {
         pullStartY.current = e.touches[0]?.clientY ?? null
@@ -438,20 +410,15 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
     const onGlobalTouchMove = (e: TouchEvent) => {
       if (pullStartY.current !== null) {
         const offset = e.touches[0].clientY - pullStartY.current
-        if (offset > refreshOffset) {
-          isPulling.current = true
-        }
+        if (offset > refreshOffset) isPulling.current = true
       }
     }
     const onGlobalTouchEnd = () => {
-      if (isPulling.current) {
-        onRefresh?.()
-      }
+      if (isPulling.current) onRefresh?.()
       pullStartY.current = null
       isPulling.current = false
     }
 
-    // 監視系イベント登録
     el.addEventListener('scroll', onScroll)
     el.addEventListener('touchstart', preventDoubleTapZoom, { passive: false })
     el.addEventListener('touchstart', onGlobalTouchStart, { passive: true })
@@ -465,7 +432,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
       el.removeEventListener('touchmove', onGlobalTouchMove as any)
       el.removeEventListener('touchend', onGlobalTouchEnd as any)
     }
-  }, [scrollContainerRef])
+  }, [scrollContainerRef, onRefresh])
 
   /** 仮想スクロール用の各種計算値 */
   const totalCount = filteredRows.length
@@ -488,6 +455,11 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
   const touchTargetRef = useRef<number | null>(null)
   const touchMovedRef = useRef(false)
 
+  /** colgroup 用: 各列の固定 width を抽出 */
+  const colWidths = useMemo(() => {
+    return columns.map(col => extractFixedWidth(col.headerClassName))
+  }, [columns])
+
   return (
     <div
       ref={scrollContainerRef}
@@ -495,9 +467,11 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
       onTouchMove={handleGlobalTouchMove}
       onTouchEnd={handleGlobalTouchEnd}
       onScroll={handleScroll}
+      className='w-full'
       style={{
         touchAction: 'manipulation',
         overflowY: openFilterKey ? 'hidden' : 'auto',
+        // ここがポイント：固定幅の列合計が画面を超える場合は横スクロールで逃がす
         overflowX: openFilterKey ? 'hidden' : 'auto',
         height: '52vh',
       }}
@@ -528,18 +502,33 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
           <span />
         )}
         <span>
-          データ件数：
-          <span className='text-sm font-bold text-blue-700'>{filteredRows.length}</span>件
+          データ件数：<span className='text-sm font-bold text-blue-700'>{filteredRows.length}</span>件
         </span>
       </div>
 
+      {/* table-fixed + colgroup で列幅を完全固定（内容で幅が変わらない） */}
       <table
-        className='w-full border-collapse  select-none'
+        className='w-full table-fixed border-collapse select-none'
         style={{
           userSelect: 'none',
           WebkitUserSelect: 'none',
         }}
       >
+        <colgroup>
+          {colWidths.map((w, idx) => (
+            <col
+              key={idx}
+              style={
+                w
+                  ? {
+                      width: w,
+                    }
+                  : undefined
+              }
+            />
+          ))}
+        </colgroup>
+
         <thead
           style={{
             position: 'sticky',
@@ -560,20 +549,17 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
               const noneSelected = rawSet !== undefined && rawSet.size === 0
 
               const isOpen = openFilterKey === fieldKey
-
               const isFilterable = FILTERABLE_LABELS.has(col.label)
-
               const isFiltered = filters[fieldKey] !== undefined
 
               return (
                 <th
                   key={col.key}
                   scope='col'
-                  className={` ${alignClass(col.align)} ${col.headerClassName ?? ''} ${
+                  className={`${alignClass(col.align)} ${col.headerClassName ?? ''} ${
                     isFiltered ? 'bg-[#3a6fb5]' : ''
-                  } `}
+                  } overflow-hidden text-ellipsis whitespace-nowrap`}
                 >
-                  {/* フィルタ対象列の場合のみボタンを表示 */}
                   {isFilterable ? (
                     <>
                       <div className='flex items-center justify-center gap-1 px-1 text-xs whitespace-nowrap'>
@@ -589,14 +575,11 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                             isFiltered
                               ? 'bg-black/10 hover:bg-black/20'
                               : 'bg-white/10 hover:bg-white/20'
-                          } `}
+                          }`}
                         >
                           <span
                             className='material-symbols-outlined text-xs leading-none'
-                            style={{
-                              fontSize: '11px',
-                              lineHeight: 2,
-                            }}
+                            style={{ fontSize: '11px', lineHeight: 2 }}
                           >
                             {isFiltered ? 'filter_alt' : 'expand_more'}
                           </span>
@@ -610,18 +593,13 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                         >
                           <div
                             className='flex max-h-[75vh] w-[100vw] max-w-sm flex-col rounded-md border border-gray-300 bg-white text-gray-800 shadow-lg'
-                            style={{
-                              overflow: 'hidden',
-                            }}
+                            style={{ overflow: 'hidden' }}
                             onClick={e => e.stopPropagation()}
                           >
-                            {/* フィルタモーダル：タイトル */}
                             <div className='border-b border-gray-200 px-3 py-2 text-xs font-semibold'>
-                              {col.label}
-                              を絞り込む
+                              {col.label}を絞り込む
                             </div>
 
-                            {/* 全選択／全解除トグル */}
                             <div
                               className='flex cursor-pointer items-center gap-2 border-b border-gray-100 px-3 py-2 text-xs'
                               onClick={e => {
@@ -639,7 +617,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                               </span>
                             </div>
 
-                            {/* 個別項目のチェックリスト */}
                             <div className='max-h-[27vh] flex-1 overflow-y-auto px-3 py-2'>
                               {uniqueValues.length === 0 ? (
                                 <div className='text-[11px] text-gray-500'>データがありません</div>
@@ -668,10 +645,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                                       onTouchEnd={e => {
                                         e.preventDefault()
                                         e.stopPropagation()
-                                        if (
-                                          touchTargetRef.current === idx &&
-                                          !touchMovedRef.current
-                                        ) {
+                                        if (touchTargetRef.current === idx && !touchMovedRef.current) {
                                           toggleFilterValue(fieldKey, v)
                                         }
                                         touchTargetRef.current = null
@@ -689,10 +663,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                                         }}
                                         className='h-5 w-5'
                                       />
-                                      <span
-                                        className='text-xs break-all text-gray-800'
-                                        title={label}
-                                      >
+                                      <span className='text-xs break-all text-gray-800' title={label}>
                                         {label}
                                       </span>
                                     </div>
@@ -701,7 +672,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                               )}
                             </div>
 
-                            {/* モーダルフッター（閉じるボタン） */}
                             <div className='flex justify-end border-t border-gray-100 px-3 py-2'>
                               <button
                                 type='button'
@@ -719,8 +689,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                       )}
                     </>
                   ) : (
-                    // フィルタ対象外列はラベルのみ表示
-                    <div className='px-1 text-xs whitespace-nowrap'>
+                    <div className='px-1 text-xs whitespace-nowrap overflow-hidden text-ellipsis'>
                       <span className='max-w-[80%] truncate'>{col.label}</span>
                     </div>
                   )}
@@ -729,23 +698,19 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
             })}
           </tr>
         </thead>
+
         <tbody>
           {/* 上側のダミー行（仮想スクロール用） */}
           {topPaddingHeight > 0 && (
             <tr>
-              <td
-                colSpan={columns.length}
-                style={{
-                  height: topPaddingHeight,
-                }}
-              />
+              <td colSpan={columns.length} style={{ height: topPaddingHeight }} />
             </tr>
           )}
 
           {/* 実際に表示する範囲のみを描画 */}
           {visibleRows.map((row, localIndex) => {
             const globalIndex = startIndex + localIndex
-            const originalIndex = rows.indexOf(row) // 元の rows におけるインデックス
+            const originalIndex = rows.indexOf(row)
 
             const baseClass =
               pressingIndex === originalIndex
@@ -757,15 +722,13 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                     : 'hover:bg-gray-100'
 
             const customClass = rowClassName ? rowClassName(row, globalIndex) : ''
-
             const key = getRowKey?.(row, globalIndex) ?? globalIndex
 
             return (
               <tr
                 key={key}
-                className={`${baseClass} ${customClass} no-hover`} // この行に no-hover を付与してホバー／アクティブ時の見た目変化を無効化
+                className={`${baseClass} ${customClass} no-hover`}
                 onMouseDown={e => {
-                  // マウス押下開始時の処理（スタイル変更は行わない）
                   touchStartYRef.current = e.clientY
                   wasScrollingRef.current = false
                   if (scrollContainerRef?.current) {
@@ -774,12 +737,10 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                   onPressStart?.(originalIndex, e)
                 }}
                 onMouseUp={e => {
-                  // マウス押下終了時の処理（ホバー／クリックによるスタイル変更なし）
                   if (wasScrollingRef.current || touchStartYRef.current === null) return
                   onPressEnd?.(e)
                 }}
                 onMouseMove={e => {
-                  // スクロール判定のみ実施。スタイルは変えない
                   const startY = touchStartYRef.current
                   const currentY = e.clientY
                   if (
@@ -793,7 +754,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                   }
                 }}
                 onTouchStart={e => {
-                  // タッチ開始（見た目は固定）
                   touchStartYRef.current = e.touches[0]?.clientY ?? null
                   wasScrollingRef.current = false
                   if (scrollContainerRef?.current) {
@@ -802,7 +762,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                   onPressStart?.(originalIndex, e)
                 }}
                 onTouchMove={e => {
-                  // タッチ移動でスクロール判定。スタイル変更はしない
                   const startY = touchStartYRef.current
                   const currentY = e.touches[0]?.clientY ?? null
                   if (
@@ -816,7 +775,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                   }
                 }}
                 onTouchEnd={e => {
-                  // タッチ終了（外観はホバー／アクティブ無効のまま）
                   if (wasScrollingRef.current || touchStartYRef.current === null) return
                   onPressEnd?.(e)
                 }}
@@ -826,7 +784,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                   return (
                     <td
                       key={String(col.key)}
-                      className={`${alignClass(col.align)} ${col.cellClassName ?? ''}`}
+                      className={`${alignClass(col.align)} ${col.cellClassName ?? ''} overflow-hidden text-ellipsis whitespace-nowrap`}
                     >
                       {col.render ? col.render(value, row) : value}
                     </td>
@@ -839,12 +797,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
           {/* 下側のダミー行（仮想スクロール用） */}
           {bottomPaddingHeight > 40 && (
             <tr>
-              <td
-                colSpan={columns.length}
-                style={{
-                  height: bottomPaddingHeight,
-                }}
-              />
+              <td colSpan={columns.length} style={{ height: bottomPaddingHeight }} />
             </tr>
           )}
 
@@ -863,7 +816,6 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
 }
 
 const HistoryTable = React.memo(HistoryTableInner) as typeof HistoryTableInner
-
 export default HistoryTable
 
 ```
