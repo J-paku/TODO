@@ -1,278 +1,245 @@
 ```
-'use client'
-
-import { useEffect, useRef, useState, useCallback } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 import type { Customer, Product } from '@/api/loadCustomerData'
-import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
-import { useErrorBoundary } from 'react-error-boundary'
-import useTouenCount from './useTouenCountActions' // 실제 경로에 맞게 유지/조정
-import type { ObjectResult, SteptaskItem } from '../types/types'
+import { ObjectResult, SteptaskItem } from '../types/types'
 
-/** ---- 型定義 ---- */
-type ProductsMap = Record<string, Product[]>
+// 得意先によって品物が異なるためのメソッド
+export const getInitialProductsForClient = async (
+  clientName: string,
+  customers: Customer[],
+  touenItems: SteptaskItem[],
+  setItemObject: (obj: ObjectResult) => void,
+  itemsOverride?: SteptaskItem[]
+): Promise<Product[]> => {
+  const tokuisakiIdFinder = customers.find(
+    el => String(el.得意先名).trim() === String(clientName).trim()
+  )
+  const tokuisakiID = tokuisakiIdFinder?.ID
 
-interface PreviewRow {
-  タイトル?: string
-  Title?: string
-  更新日時?: string
-  UpdatedTime?: string
-  updatedTime?: string
-}
+  const source = itemsOverride ?? touenItems
+  const selectedClientItem = source?.find(
+    (item: SteptaskItem) => item.ClassHash?.ClassA == tokuisakiID
+  )
+  if (!selectedClientItem) return []
 
-type UseTouenItemsParams = {
-  /** 最寄り先名（未選択時は null） */
-  nearestClientName: string | null
-  /** 一度だけ取得されたプレビュー行 */
-  previewRowsOnce: PreviewRow[] | null
-  customers: Customer[]
-
-  /** index.tsx 互換維持 */
-  touenItems?: SteptaskItem[]
-  setTouenItems: Dispatch<SetStateAction<SteptaskItem[]>>
-  setItemObject: Dispatch<SetStateAction<ObjectResult>>
-  setProducts: Dispatch<SetStateAction<Product[]>>
-  setProductsMap: Dispatch<SetStateAction<ProductsMap>>
-
-  oneShotPerClient?: boolean
-}
-
-type UseTouenItemsReturn = {
-  listLoading: boolean
-  fetchComplete: boolean
-  stableFetchComplete: boolean
-  forceRefresh: (clientName?: string) => void
-}
-
-/** ---- ユーティリティ ---- */
-const ts = (v: unknown): number => {
-  const t = Date.parse(String(v ?? ''))
-  return Number.isFinite(t) ? t : 0
-}
-
-const isValidClientName = (v: unknown): v is string => {
-  const s = String(v ?? '').trim()
-  return s.length > 0 && s !== '最寄り先を選択'
-}
-
-const getPreviewTsForClient = (rows: PreviewRow[], clientName: string): number => {
-  const rowForClient = rows.find(r => {
-    const title = String(r?.タイトル ?? r?.Title ?? '').trim()
-    return title === String(clientName).trim()
-  })
-  return ts(rowForClient?.更新日時 ?? rowForClient?.UpdatedTime ?? rowForClient?.updatedTime)
-}
-
-/** StepTask ITEMS_GET payload (당신 프로젝트의 실제 payload 형태로 맞춰서 사용) */
-type PayloadSteptaskSyouhin = {
-  ApiVersion: number
-  Offset: number
-  PageSize: number
-  View: {
-    ColumnFilterHash: { Title: string }
-    ColumnFilterSearchTypes: { Title: string }
-  }
-}
-
-/** StepTask response 최소 형태(타입 충돌 방지용) */
-type StepTaskItemsGetResponse<T> = {
-  Response?: {
-    TotalCount?: number
-    Data?: T[]
-  }
-}
-
-const buildInitialPayload = (clientName: string): PayloadSteptaskSyouhin => ({
-  ApiVersion: 1.1,
-  Offset: 0,
-  PageSize: 1,
-  View: {
-    ColumnFilterHash: { Title: clientName },
-    ColumnFilterSearchTypes: { Title: 'ExactMatch' },
-  },
-})
-
-/** ---- Hook 本体 ---- */
-export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsReturn {
-  const { showBoundary } = useErrorBoundary()
-  const { getSteptaskSyouhin } = useTouenCount()
-
+  // PakuCustomHashTwo を追加（元のロジックを変えない）
   const {
-    nearestClientName,
-    previewRowsOnce,
-    customers,
-    setTouenItems,
-    setItemObject,
-    setProducts,
-    setProductsMap,
-    oneShotPerClient = true,
-  } = params
+    ClassHash,
+    PakuCustomHash,
+    PakuCustomHashTwo,
+    PakuCustomHashThree,
+    PakuCustomHashFour,
+    PakuCustomHashMasterIndex,
+  } = selectedClientItem as {
+    ClassHash: { ClassA: string; ClassB: string; Custom001: string; CustomA: string }
+    PakuCustomHash?: Record<string, string>
+    PakuCustomHashTwo?: Record<string, string>
+    PakuCustomHashThree: Record<string, string>
+    PakuCustomHashFour: Record<string, string>
+    PakuCustomHashMasterIndex: Record<string, number>
+  }
 
-  const [listLoading, setListLoading] = useState(false)
-  const [dataEvaluatedOnce, setDataEvaluatedOnce] = useState(false)
-  const [stableFetchComplete, setStableFetchComplete] = useState(false)
+  const formattedItems: string[] = []
 
-  /** 実行済みタイムスタンプを得意先単位で保持 */
-  const ranForClientRef = useRef<Map<string, number>>(new Map())
+  const startCharCode = 'A'.charCodeAt(0)
+  const endCharCode = 'U'.charCodeAt(0)
+  const alphaList: string[] = []
+  const customAlphaList: string[] = []
 
-  /** fetchComplete がフレーム境界で安定したことを別フラグへ反映 */
-  useEffect(() => {
-    let rafId: number | null = null
-    if (!listLoading && dataEvaluatedOnce) {
-      rafId = requestAnimationFrame(() => setStableFetchComplete(true))
-    } else {
-      setStableFetchComplete(false)
+  for (let code = startCharCode; code < endCharCode; code += 2) {
+    alphaList.push(String.fromCharCode(code))
+  }
+  for (let code = startCharCode; code < endCharCode; code++) {
+    customAlphaList.push(String.fromCharCode(code))
+  }
+
+  let pendingCustom = ''
+  let pendingCustomTwo = ''
+  let pendingMasterIndex = ''
+  let lastCustomTwo = ''
+
+  // ===== A〜U のペア（CustomA〜） =====
+  for (let i = 0; i < alphaList.length; i++) {
+    const customKey = `Custom${customAlphaList[i]}`
+
+    const name = String(PakuCustomHashThree[customKey] ?? '').trim()
+    const code = String(PakuCustomHashFour[customKey] ?? '').trim()
+
+    const rawCustom = String(PakuCustomHash?.[customKey] ?? '').trim()
+    const rawCustomTwo = String(PakuCustomHashTwo?.[customKey] ?? '').trim()
+
+    const masterIndex = String(PakuCustomHashMasterIndex?.[customKey] ?? '').trim()
+
+    let customValue = rawCustom
+    let customValueTwo = rawCustomTwo
+    let customMasterIndex = masterIndex
+
+    if (!name && !code) {
+      if (rawCustom) pendingCustom = rawCustom
+      if (rawCustomTwo) pendingCustomTwo = rawCustomTwo
+      if (masterIndex) pendingMasterIndex = masterIndex
+      continue
     }
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
+
+    if (pendingCustom) {
+      customValue = pendingCustom
+      pendingCustom = rawCustom || ''
     }
-  }, [listLoading, dataEvaluatedOnce])
-
-  /** 最寄り先が変わるたびにワンショット制御を解除 */
-  useEffect(() => {
-    if (isValidClientName(nearestClientName)) {
-      ranForClientRef.current.delete(nearestClientName)
+    if (pendingCustomTwo) {
+      customValueTwo = pendingCustomTwo
+      pendingCustomTwo = rawCustomTwo || ''
     }
-  }, [nearestClientName])
 
-  /**
-   * StepTask ITEMS_GET を「TotalCount→全件ページング」して配列で返す
-   * 注意: useTouenCount().getSteptaskSyouhin は “Response(TotalCount/Data)” を返す前提
-   */
-  const fetchAllPages = useCallback(
-    async (clientName: string): Promise<SteptaskItem[]> => {
-      const pageSize = 200
+    // custom2 が空なら直前の確定値で補完（スパースインデックス対策）
+    if (!customValueTwo && lastCustomTwo) customValueTwo = lastCustomTwo
 
-      const initialPayload = buildInitialPayload(clientName)
+    // 確定後に lastCustomTwo を更新
+    if (customValueTwo) lastCustomTwo = customValueTwo
 
-      // 1) TotalCount
-      const initialResUnknown = await getSteptaskSyouhin(initialPayload as any)
-      const initialRes = initialResUnknown as StepTaskItemsGetResponse<SteptaskItem> | undefined
+    formattedItems.push(`${code}, ${name}, ${customValue}, ${customValueTwo}, ${customMasterIndex}`)
+  }
 
-      const totalCount = initialRes?.Response?.TotalCount
-      if (typeof totalCount !== 'number') {
-        throw new Error('StepTask TotalCount が不正です')
-      }
+  // ===== U〜Z のペア（Custom001〜） =====
+  let pendingAlpha = ''
+  let pendingAlphaTwo = ''
+  let pendingAlphaMasterIndex = ''
+  let customIndex = 1
 
-      // 2) 全ページ
-      const reqs: Promise<unknown>[] = []
-      for (let offset = 0; offset < totalCount; offset += pageSize) {
-        const payload: PayloadSteptaskSyouhin = {
-          ...initialPayload,
-          Offset: offset,
-          PageSize: pageSize,
-        }
-        reqs.push(getSteptaskSyouhin(payload as any))
-      }
+  for (let ch = 'U'.charCodeAt(0); ch <= 'Z'.charCodeAt(0); ch += 2) {
+    const customKey = `Custom${String(customIndex).padStart(3, '0')}`
+    customIndex++
 
-      const resList = await Promise.all(reqs)
-      const list = resList.flatMap(r => {
-        const rr = r as StepTaskItemsGetResponse<SteptaskItem> | undefined
-        return rr?.Response?.Data ?? []
-      })
+    const name = String(PakuCustomHashThree[customKey] ?? '').trim()
+    const code = String(PakuCustomHashFour[customKey] ?? '').trim()
 
-      return list
-    },
-    [getSteptaskSyouhin]
-  )
+    const rawCustom = String(PakuCustomHash?.[customKey] ?? '').trim()
+    const rawCustomTwo = String(PakuCustomHashTwo?.[customKey] ?? '').trim()
 
-  /**
-   * 強制再取得
-   * - clientName 未指定なら nearestClientName を使う（「何も取れない」対策）
-   */
-  const forceRefresh = useCallback(
-    async (clientName?: string) => {
-      const target = isValidClientName(clientName)
-        ? clientName
-        : isValidClientName(nearestClientName)
-          ? nearestClientName
-          : null
+    const masterIndex = String(PakuCustomHashMasterIndex?.[customKey] ?? '').trim()
 
-      if (!target) return
+    let customValue = rawCustom
+    let customValueTwo = rawCustomTwo
+    let customMasterIndex = masterIndex
 
-      setListLoading(true)
-      try {
-        const list = await fetchAllPages(target)
-        setTouenItems(list)
-        setDataEvaluatedOnce(true)
-      } catch (e) {
-        console.error(e)
-        setDataEvaluatedOnce(true)
-        showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
-      } finally {
-        setListLoading(false)
-        ranForClientRef.current.set(target, Date.now())
-      }
-    },
-    [fetchAllPages, nearestClientName, setTouenItems, showBoundary]
-  )
-
-  /**
-   * customers 로드 이후, 현재 nearestClientName 이 유효하면 한번 강제 로드
-   * (이전 코드에서 forceRefresh()가 “아무것도 안 하는” 버그였던 부분 해결)
-   */
-  useEffect(() => {
-    if (customers.length <= 0) return
-    if (!isValidClientName(nearestClientName)) return
-    forceRefresh(nearestClientName)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers.length])
-
-  /**
-   * nearestClientName / previewRowsOnce 변화에 따른 자동 로드 (oneShot 제어)
-   */
-  useEffect(() => {
-    if (!isValidClientName(nearestClientName)) return
-    if (!Array.isArray(customers) || customers.length === 0) return
-
-    const rows = previewRowsOnce ?? []
-    const currentPreviewTs = getPreviewTsForClient(rows, nearestClientName)
-
-    const lastTs = ranForClientRef.current.get(nearestClientName) ?? -1
-    if (oneShotPerClient && lastTs >= currentPreviewTs) return
-
-    setListLoading(true)
-    let aborted = false
-
-    ;(async () => {
-      try {
-        const list = await fetchAllPages(nearestClientName)
-        if (!aborted) {
-          setTouenItems(list)
-          setDataEvaluatedOnce(true)
-        }
-      } catch (e) {
-        console.error(e)
-        if (!aborted) setDataEvaluatedOnce(true)
-        showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
-      } finally {
-        if (!aborted) {
-          setListLoading(false)
-          ranForClientRef.current.set(nearestClientName, currentPreviewTs)
-        }
-      }
-    })()
-
-    return () => {
-      aborted = true
-      setListLoading(false)
+    if (!name && !code) {
+      if (rawCustom) pendingAlpha = rawCustom
+      if (rawCustomTwo) pendingAlphaTwo = rawCustomTwo
+      if (masterIndex) pendingAlphaMasterIndex = masterIndex
+      continue
     }
-  }, [
-    nearestClientName,
-    previewRowsOnce,
-    customers,
-    oneShotPerClient,
-    fetchAllPages,
-    setTouenItems,
-    showBoundary,
-    // 互換のため依存関係に残す（index側のstateセットと整合）
-    setItemObject,
-    setProducts,
-    setProductsMap,
-  ])
 
-  const fetchComplete = !listLoading && dataEvaluatedOnce
-  return { listLoading, fetchComplete, stableFetchComplete, forceRefresh }
+    if (pendingAlpha) {
+      customValue = pendingAlpha
+      pendingAlpha = rawCustom || ''
+    }
+    if (pendingAlphaTwo) {
+      customValueTwo = pendingAlphaTwo
+      pendingAlphaTwo = rawCustomTwo || ''
+    }
+
+    // custom2 が空なら直前の確定値で補完
+    if (!customValueTwo && lastCustomTwo) customValueTwo = lastCustomTwo
+
+    // 確定後に lastCustomTwo を更新
+    if (customValueTwo) lastCustomTwo = customValueTwo
+
+    formattedItems.push(`${code}, ${name}, ${customValue}, ${customValueTwo}, ${customMasterIndex}`)
+  }
+
+  // ===== デバッグ（Description001〜020 の 10件、Custom003〜） =====
+
+  // 保留キュー（custom1/custom2/masterIndex）
+  let pendC1Queue: string[] = []
+  let pendC2Queue: string[] = []
+  let pendMIQueue: string[] = []
+
+  // 直前確定値（custom2/masterIndex）
+  let lastC2 = ''
+  let lastMI = ''
+
+  // 値を文字列化し trim するユーティリティ
+  const toStrTrim = (v: unknown): string =>
+    typeof v === 'string' ? v.trim() : String(v ?? '').trim()
+
+  for (let idx = 2; idx <= 10; idx++) {
+    // Custom004 ～ Custom012 を想定（idx+2）
+    const customKey = `Custom${String(idx + 2).padStart(3, '0')}`
+
+    // 生値の正規化
+    const rawName = toStrTrim(PakuCustomHashThree?.[customKey])
+    const rawCode = toStrTrim(PakuCustomHashFour?.[customKey])
+    const rawC1 = toStrTrim(PakuCustomHash?.[customKey])
+    const rawC2 = toStrTrim(PakuCustomHashTwo?.[customKey])
+    const rawMI = toStrTrim(PakuCustomHashMasterIndex?.[customKey])
+
+    // name と code が両方空 → 値は保留して次へ（custom1/custom2/masterIndex を同じロジックで保留）
+    if (!rawName && !rawCode) {
+      if (rawC1) pendC1Queue.push(rawC1)
+      if (rawC2) pendC2Queue.push(rawC2)
+      if (rawMI) pendMIQueue.push(rawMI)
+      continue
+    }
+
+    // キュー優先で確定値決定（FIFO）
+    const finalC1 = pendC1Queue.length > 0 ? (pendC1Queue.shift() as string) : rawC1
+    let finalC2 = pendC2Queue.length > 0 ? (pendC2Queue.shift() as string) : rawC2
+    let finalMI = pendMIQueue.length > 0 ? (pendMIQueue.shift() as string) : rawMI
+
+    // custom2 が空なら直前の確定値で補完
+    if (!finalC2 && lastC2) {
+      finalC2 = lastC2
+    }
+    // masterIndex が空なら直前の確定値で補完（他キーと同じロジック）
+    if (!finalMI && lastMI) {
+      finalMI = lastMI
+    }
+
+    // 出力は常に 5 カラム（code, name, custom1, custom2, masterIndex）
+    formattedItems.push(`${rawCode}, ${rawName}, ${finalC1}, ${finalC2}, ${finalMI}`)
+
+    // 元ロジック通り：未消化の生値をキューに戻す（確定値に使われなかった分を保留継続）
+    if (rawC1 && rawC1 !== finalC1) pendC1Queue.push(rawC1)
+    if (rawC2 && rawC2 !== finalC2) pendC2Queue.push(rawC2)
+    if (rawMI && rawMI !== finalMI) pendMIQueue.push(rawMI)
+
+    // 直前確定値の更新
+    if (finalC2) lastC2 = finalC2
+    if (finalMI) lastMI = finalMI
+  }
+
+  // ===== objectResult の構築（既存通り） =====
+  const objectResult: ObjectResult = {
+    ResultID: ClassHash.ClassA,
+    storageCode: ClassHash.Custom001 ?? ClassHash.CustomA,
+  }
+
+  let validIndex = 1
+  formattedItems.forEach(item => {
+    const [productNumber, productName] = item?.split(',').map(str => str.trim()) ?? []
+    const isValid = productNumber && productName && productNumber !== '' && productName !== ''
+
+    if (isValid) {
+      objectResult[`item${validIndex}`] = item // "code, name, custom1, custom2"
+      validIndex++
+    }
+  })
+
+  setItemObject(objectResult)
+
+  // 画面返却：名称は 2列目のみ使用（既存通り）
+  return formattedItems.map((item, index) => {
+    const parts = item.split(',').map(s => s.trim())
+    const [, name, , destinationCode, narabijyun] = parts
+
+    // console.log('get Item Array', parts)
+    return {
+      id: index + 1,
+      product_name: name ?? '',
+      quantity: 0,
+      destination_code: destinationCode ?? '',
+      narabijyun: narabijyun ?? '',
+    }
+  })
 }
+// 得意先によって品物が異なるためのメソッド END
 
 ```
