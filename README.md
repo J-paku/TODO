@@ -1,23 +1,103 @@
 ```
+// api/touen/count/getSteptaskSyouhin.ts
+import { HttpRequest } from '@/hooks/useHttp'
+import { ApiResponse, axiosInstance } from '@/api'
+import axios from 'axios'
+import { TOUEN_API_ENDPOINTS } from '@/constants/api/touen'
+
+export type PayloadSteptaskSyouhin = {
+  ApiVersion: number
+  Offset: number
+  PageSize: number
+  View: {
+    ColumnFilterHash: { Title: string }
+    ColumnFilterSearchTypes: { Title: string }
+  }
+}
+
+export type SteptaskItemsGetResponse<T = any> = {
+  Response?: {
+    TotalCount?: number
+    Data?: T[]
+  }
+}
+
+export default async function getSteptaskSyouhin<T = any>(
+  httpRequest: HttpRequest,
+  payload: PayloadSteptaskSyouhin
+): Promise<ApiResponse<SteptaskItemsGetResponse<T>>> {
+  const response = await httpRequest(() =>
+    axiosInstance.post(TOUEN_API_ENDPOINTS.ITEMS_GET, payload)
+  )
+
+  if (axios.isAxiosError(response)) {
+    return { code: response.code ?? 500, message: response.message, data: undefined }
+  }
+
+  return {
+    code: 200,
+    message: 'api get success',
+    data: response?.data as SteptaskItemsGetResponse<T>,
+  }
+}
+
+```
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useErrorBoundary } from 'react-error-boundary'
 import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
+import useTouenCount from '@/hooks/useTouenCount'
 import { logSteptaskErrorCause } from '@/api/fetchSteptask'
-import { getSteptaskSyouhin } from '../services/fetchSteptask' // 기존 사용 경로 유지
-import type { Dispatch, SetStateAction } from 'react'
-import type { Customer, Product } from '@/api/loadCustomerData'
-import type { ObjectResult, SteptaskItem } from '../types/types'
 
-/** ---- 型定義 ---- */
-type ClassKey = `Class${Uppercase<string>}`
-type ClassHash = Partial<Record<ClassKey, string>>
-type PakuCustomHash = Partial<Record<`Custom${string | number}`, string>>
-type DescriptionKey = `Description${Uppercase<string>}`
-type DescriptionHash = Partial<Record<DescriptionKey, string>>
+/**
+ * useFetchTouenItems.ts
+ * - index.ts에서 아래처럼 그대로 사용 가능:
+ *   const { listLoading, stableFetchComplete, forceRefresh } = useFetchTouenItems({...})
+ *
+ * - 외부 getSteptaskSyouhin(service)은 사용하지 않고,
+ *   useTouenCount().getSteptaskSyouhin(payload)만 호출해서
+ *   TotalCount 기반으로 전 페이지를 가져온 뒤 setTouenItems로 반영합니다.
+ *
+ * 주의:
+ * - 당신 프로젝트의 ApiResponse / Steptask 응답 형태가 약간 달라도 동작하도록 “유연 파싱”을 넣었습니다.
+ * - item의 세부 가공(fetchDetail 등)은 여기 파일만으로는 정의가 없어서,
+ *   최소한 “Hash 객체 보장”까지만 수행합니다(컴파일/실행 우선).
+ */
 
-interface PreviewRow {
+/** ---- 최소 타입(프로젝트 타입이 있어도 충돌 최소화 위해 좁게 정의) ---- */
+type AnyObj = Record<string, any>
+
+export type ClassKey = `Class${Uppercase<string>}`
+export type ClassHash = Partial<Record<ClassKey, string>>
+export type PakuCustomHash = Partial<Record<`Custom${string | number}`, any>>
+export type DescriptionKey = `Description${Uppercase<string>}`
+export type DescriptionHash = Partial<Record<DescriptionKey, string>>
+
+export interface SteptaskItem extends AnyObj {
+  Title?: string
+  タイトル?: string
+  UpdatedTime?: string
+  updatedTime?: string
+  ResultID?: string
+  ResultId?: string
+  SiteId?: string
+  ClassHash?: ClassHash & AnyObj
+
+  // 아래는 기존 로직이 채우던 필드들(없어도 되지만 런타임 안정 위해 존재만 보장)
+  PakuCustomHash?: PakuCustomHash
+  PakuCustomHashTwo?: AnyObj
+  PakuCustomHashThree?: AnyObj
+  PakuCustomHashFour?: AnyObj
+  PakuCustomSoko?: AnyObj
+  PakuCustomHashProductIndex?: AnyObj
+  PakuCustomHashMasterIndex?: AnyObj
+}
+
+export type ObjectResult = AnyObj
+export type ProductsMap = Record<string, any[]>
+
+export interface PreviewRow {
   タイトル?: string
   Title?: string
   更新日時?: string
@@ -25,47 +105,86 @@ interface PreviewRow {
   updatedTime?: string
 }
 
-type ProductsMap = Record<string, Product[]>
-
-type UseTouenItemsParams = {
+export type UseTouenItemsParams = {
+  /** 最寄り先名（未選択時は null） */
   nearestClientName: string | null
+  /** 一度だけ取得されたプレビュー行 */
   previewRowsOnce: PreviewRow[] | null
-  customers: Customer[]
-
-  /** 互換維持: index.ts から渡されるので受ける（本フック内では基本参照しない） */
+  customers: any[]
+  /** 互換維持のため: 本フック内では参照しない（外部状態のみ更新） */
   touenItems?: SteptaskItem[]
-  setTouenItems: Dispatch<SetStateAction<SteptaskItem[]>>
-
-  /** 互換維持: 外で使うので受ける（このフックでは触らない） */
-  setItemObject: Dispatch<SetStateAction<ObjectResult>>
-  setProducts: Dispatch<SetStateAction<Product[]>>
-  setProductsMap: Dispatch<SetStateAction<ProductsMap>>
-
+  setTouenItems: React.Dispatch<React.SetStateAction<SteptaskItem[]>>
+  setItemObject: React.Dispatch<React.SetStateAction<ObjectResult>>
+  setProducts: React.Dispatch<React.SetStateAction<any[]>>
+  setProductsMap: React.Dispatch<React.SetStateAction<ProductsMap>>
   oneShotPerClient?: boolean
 }
 
-type UseTouenItemsReturn = {
+export type UseTouenItemsReturn = {
   listLoading: boolean
   fetchComplete: boolean
   stableFetchComplete: boolean
   forceRefresh: (clientName?: string) => void
 }
 
-/** 値→タイムスタンプ（不正値は 0） */
-const ts = (v: unknown): number => {
+/** ---- 유틸 ---- */
+const parseTs = (v: unknown): number => {
   const t = Date.parse(String(v ?? ''))
   return Number.isFinite(t) ? t : 0
 }
 
-/** nearestClientName が “未選択扱い” かどうか（あなたの既存仕様に合わせて調整可） */
 const isInvalidClient = (name: string | null | undefined) => {
   if (!name) return true
   const n = String(name).trim()
   return n.length === 0 || n === '最寄り先を選択'
 }
 
+/**
+ * ApiResponse / raw 등을 최대한 유연하게 파싱해서
+ * { totalCount, data } 형태로 통일합니다.
+ */
+const normalizeSteptaskResponse = (
+  maybe: any
+): { ok: boolean; totalCount?: number; data: SteptaskItem[] } => {
+  if (!maybe) return { ok: false, data: [] }
+
+  // 1) ApiResponse 형태: { code, data, message }
+  const code = typeof maybe.code === 'number' ? maybe.code : undefined
+  const body = maybe.data ?? maybe
+
+  // 2) body 형태: { Response: { TotalCount, Data } }
+  const resp = body?.Response ?? body?.response ?? body
+  const totalCount =
+    typeof resp?.TotalCount === 'number'
+      ? resp.TotalCount
+      : typeof resp?.totalCount === 'number'
+        ? resp.totalCount
+        : undefined
+
+  const dataRaw = resp?.Data ?? resp?.data ?? []
+  const data = Array.isArray(dataRaw) ? (dataRaw as SteptaskItem[]) : []
+
+  const ok = code ? code === 200 : true
+  return { ok, totalCount, data }
+}
+
+/** item의 Hash 객체들을 항상 존재하게 만들어 런타임 안정성 확보 */
+const ensureItemHashes = (item: SteptaskItem) => {
+  item.PakuCustomHash ||= {}
+  item.PakuCustomHashTwo ||= {}
+  item.PakuCustomHashThree ||= {}
+  item.PakuCustomHashFour ||= {}
+  item.PakuCustomSoko ||= {}
+  item.ClassHash ||= {}
+  item.PakuCustomHashProductIndex ||= {}
+  item.PakuCustomHashMasterIndex ||= {}
+  return item
+}
+
+/** ---- Hook 본체 ---- */
 export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsReturn {
   const { showBoundary } = useErrorBoundary()
+  const { getSteptaskSyouhin } = useTouenCount()
 
   const {
     nearestClientName,
@@ -79,142 +198,157 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   const [dataEvaluatedOnce, setDataEvaluatedOnce] = useState(false)
   const [stableFetchComplete, setStableFetchComplete] = useState(false)
 
-  /**
-   * client単位の制御:
-   * - lastPreviewTs: “この preview の更新日時まで” 取得済み
-   * - inFlight: 同一 client の並列二重呼び出しを dedupe
-   */
-  const clientStateRef = useRef<
-    Map<
-      string,
-      {
-        lastPreviewTs: number
-        inFlight?: Promise<SteptaskItem[]>
-      }
-    >
-  >(new Map())
+  /** 得意先ごとの実行済みタイムスタンプ（ワンショット制御） */
+  const ranForClientRef = useRef<Map<string, number>>(new Map())
+  /** 同一得意先の同時実行をデデュープ */
+  const inFlightRef = useRef<Map<string, Promise<SteptaskItem[]>>>(new Map())
 
-  /** previewRowsOnce から 해당 client의 preview timestamp 얻기 */
-  const getPreviewTsForClient = useCallback(
+  const previewTsForClient = useCallback(
     (clientName: string): number | null => {
       const rows = previewRowsOnce ?? []
       const row = rows.find(r => {
         const title = r?.タイトル ?? r?.Title ?? ''
         return String(title).trim() === String(clientName).trim()
       })
-      const t = ts(row?.更新日時 ?? row?.UpdatedTime ?? row?.updatedTime)
-
-      // 중요: row 자체를 못 찾는 경우에는 “스킵 판단”을 하면 안 됨
-      // -> null 로 반환해서 oneShot gate를 적용하지 않게 한다.
-      const found = !!row
-      return found ? t : null
+      if (!row) return null
+      return parseTs(row.更新日時 ?? row.UpdatedTime ?? row.updatedTime)
     },
     [previewRowsOnce]
   )
 
-  /** 핵심 fetch 함수 (중복호출 방지 + oneShot 게이트 + 에러 정책 통일) */
-  const fetchClient = useCallback(
-    async (clientName: string, opts?: { force?: boolean }) => {
+  /**
+   * TotalCount 기반 전 페이지 수집
+   * - 훅 밖 URL/axios 관리: useTouenCount().getSteptaskSyouhin(payload) 호출만 수행
+   */
+  const fetchAllPages = useCallback(
+    async (tokuisaki: string): Promise<SteptaskItem[]> => {
+      const pageSize = 200
+
+      // 1) TotalCount 확인 (PageSize=1)
+      const initialPayload = {
+        ApiVersion: 1.1,
+        Offset: 0,
+        PageSize: 1,
+        View: {
+          ColumnFilterHash: { Title: tokuisaki },
+          ColumnFilterSearchTypes: { Title: 'ExactMatch' },
+        },
+      }
+
+      const initialRes = await getSteptaskSyouhin(initialPayload as any)
+      const initialNorm = normalizeSteptaskResponse(initialRes)
+
+      if (!initialNorm.ok) throw new Error('getSteptaskSyouhin initial failed')
+      if (typeof initialNorm.totalCount !== 'number') throw new Error('TotalCountが不正です')
+
+      const totalCount = initialNorm.totalCount
+
+      // 2) 전 페이지 병렬 호출
+      const reqs: Promise<any>[] = []
+      for (let offset = 0; offset < totalCount; offset += pageSize) {
+        const payload = { ...initialPayload, Offset: offset, PageSize: pageSize }
+        reqs.push(getSteptaskSyouhin(payload as any))
+      }
+
+      const pages = await Promise.all(reqs)
+      const list: SteptaskItem[] = pages.flatMap(p => normalizeSteptaskResponse(p).data)
+
+      // 3) 최소 가공(해시 보장)
+      for (const item of list) ensureItemHashes(item)
+
+      return list
+    },
+    [getSteptaskSyouhin]
+  )
+
+  const runFetchForClient = useCallback(
+    async (clientName: string, opts?: { force?: boolean }): Promise<SteptaskItem[]> => {
       const force = opts?.force === true
 
-      // oneShot 판단용 previewTs
-      const previewTsOrNull = getPreviewTsForClient(clientName)
-
-      const state = clientStateRef.current.get(clientName) ?? {
-        lastPreviewTs: -1,
+      // in-flight dedupe
+      if (!force) {
+        const inflight = inFlightRef.current.get(clientName)
+        if (inflight) return inflight
       }
 
-      // 1) 진행중 요청이 있으면 재사용 (중복 호출 방지)
-      if (!force && state.inFlight) {
-        return state.inFlight
+      const previewTs = previewTsForClient(clientName)
+      const lastTs = ranForClientRef.current.get(clientName) ?? -1
+
+      // oneShotPerClient: previewTs가 있을 때만 비교(없으면 항상 실행)
+      if (!force && oneShotPerClient && previewTs !== null && lastTs >= previewTs) {
+        // 이미 최신으로 판단 -> 아무것도 안 바꾸고 종료
+        setDataEvaluatedOnce(true)
+        return []
       }
 
-      // 2) oneShot gate: previewTs를 알 수 있는 경우에만 적용
-      if (!force && oneShotPerClient && previewTsOrNull !== null) {
-        if (state.lastPreviewTs >= previewTsOrNull) {
-          // 이미 최신 previewTs까지 반영됨
-          return [] as SteptaskItem[] // 호출 스킵 (호출자에서 길이로 판단하지 않도록 주의)
-        }
-      }
+      setListLoading(true)
+      setDataEvaluatedOnce(false)
 
-      // 3) 실제 호출을 inFlight로 등록
+      const errorList: string[] = []
+
       const p = (async () => {
-        setListLoading(true)
-        setDataEvaluatedOnce(false)
-        const errorList: string[] = []
         try {
-          const apiList: SteptaskItem[] = (await getSteptaskSyouhin(clientName)) ?? []
-          setTouenItems(apiList)
+          const list = await fetchAllPages(clientName)
+          setTouenItems(list)
           setDataEvaluatedOnce(true)
 
-          // fetch 성공 시: lastPreviewTs 갱신
-          const nextPreviewTs =
-            previewTsOrNull !== null ? previewTsOrNull : Date.now() // previewTs 없으면 “현재시각”으로만 중복 방지
-          clientStateRef.current.set(clientName, { lastPreviewTs: nextPreviewTs })
+          const nextTs = previewTs ?? Date.now()
+          ranForClientRef.current.set(clientName, nextTs)
 
-          return apiList
+          return list
         } catch (e) {
           errorList.push(String(e))
           setDataEvaluatedOnce(true)
           console.error(e)
-          // 기존 정책 유지: boundary로 에러 페이지 라우팅
           showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
           throw e
         } finally {
           setListLoading(false)
-          // inFlight 해제
-          const cur = clientStateRef.current.get(clientName) ?? { lastPreviewTs: -1 }
-          clientStateRef.current.set(clientName, { ...cur, inFlight: undefined })
+          inFlightRef.current.delete(clientName)
 
           if (errorList.length > 0) {
-            // 로그 정책 유지
             try {
               await logSteptaskErrorCause(errorList.join('\n'))
             } catch {
-              // logging 실패는 무시(본 에러 흐름 방해 금지)
+              // noop
             }
           }
         }
       })()
 
-      clientStateRef.current.set(clientName, { ...state, inFlight: p })
+      inFlightRef.current.set(clientName, p)
       return p
     },
-    [getPreviewTsForClient, oneShotPerClient, setTouenItems, showBoundary]
+    [fetchAllPages, oneShotPerClient, previewTsForClient, setTouenItems, showBoundary]
   )
 
-  /**
-   * 외부에서 호출 가능한 forceRefresh:
-   * - 인자로 clientName 주면 그 client를 강제 재조회
-   * - 인자가 없으면 nearestClientName을 사용
-   */
+  /** 외부에서 강제 재조회 */
   const forceRefresh = useCallback(
     (clientName?: string) => {
-      const target = clientName ?? nearestClientName ?? null
+      const target = clientName ?? nearestClientName
       if (isInvalidClient(target)) return
-      void fetchClient(String(target), { force: true })
+      void runFetchForClient(String(target), { force: true })
     },
-    [nearestClientName, fetchClient]
+    [nearestClientName, runFetchForClient]
   )
 
-  /** fetchComplete 가 안정적으로 true 된 다음 프레임에서 stableFetchComplete true */
+  /** stableFetchComplete: fetchComplete가 프레임 경계에서 안정화 되었는지 */
   useEffect(() => {
-    let raf: number | null = null
+    let rafId: number | null = null
     const fetchComplete = !listLoading && dataEvaluatedOnce
     if (fetchComplete) {
-      raf = requestAnimationFrame(() => setStableFetchComplete(true))
+      rafId = requestAnimationFrame(() => setStableFetchComplete(true))
     } else {
       setStableFetchComplete(false)
     }
     return () => {
-      if (raf !== null) cancelAnimationFrame(raf)
+      if (rafId !== null) cancelAnimationFrame(rafId)
     }
   }, [listLoading, dataEvaluatedOnce])
 
   /**
-   * 자동 fetch (원래 로직 유지 + IIFE 방식)
-   * - nearestClientName이 유효하고 customers가 준비된 경우에만
-   * - oneShotPerClient 조건을 fetchClient에서 처리
+   * IIFE 방식(B)
+   * - nearestClientName / customers 준비되면 자동 fetch
    */
   useEffect(() => {
     let cancelled = false
@@ -224,16 +358,16 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
       if (!Array.isArray(customers) || customers.length === 0) return
 
       try {
-        // force가 아닌 일반 fetch (oneShot 적용)
-        await fetchClient(String(nearestClientName))
+        await runFetchForClient(String(nearestClientName))
       } catch {
-        // fetchClient 내부에서 boundary 처리하므로 여기서 추가 처리 불필요
+        // 에러 처리는 showBoundary에서 수행
       }
     })()
+
     return () => {
       cancelled = true
     }
-  }, [nearestClientName, customers.length, fetchClient])
+  }, [nearestClientName, customers?.length, runFetchForClient])
 
   const fetchComplete = useMemo(() => !listLoading && dataEvaluatedOnce, [listLoading, dataEvaluatedOnce])
 
@@ -245,4 +379,4 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   }
 }
 
-  ```
+```
