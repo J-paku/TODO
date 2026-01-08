@@ -1,72 +1,72 @@
 ```
-import axios, { AxiosInstance } from 'axios'
-import { z } from 'zod'
+import axios from 'axios'
+import { axiosInstance, ApiResponse } from '@/api'
+import type { HttpRequest } from '@/hooks/useHttp'
+import { TOUEN_API_ENDPOINTS } from '@/constants/api/touen'
+import type { SteptaskItem } from '@/features/touen/types/types' // 프로젝트 실제 경로에 맞춰 조정하세요
 
-export type ApiResponse<T> = {
-  pagination?: {
-    Offset: number
-    PageSize: number
-    TotalCount: number
+export type PayloadSteptaskSyouhin = {
+  ApiVersion?: number | string
+  ApiKey?: string
+  Offset: number
+  PageSize: number
+  View: {
+    ColumnFilterHash: {
+      Title: string
+    }
+    ColumnFilterSearchTypes: {
+      Title: 'ExactMatch' | string
+    }
   }
-  data: T | null | undefined
-  message: string
-  code: number | string
-  _error?: z.core.$ZodIssue[]
 }
 
-// this const is load on App start should be careful
-export const axiosInstance: AxiosInstance = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_PLEASANTER_URL, //base url config here or env
-  // headers: {
-  //   Accept: '*/*', // for test
-  //   'Access-Control-Allow-Origin': '*', // for test
-  //   'Content-Type': 'application/json',
-  // },
-})
-// Request Interceptor
-axiosInstance.interceptors.request.use(
-  config => {
-    config.params = {
-      ...config.params,
-      // version: '1.0'
-    }
-    if (config.method === 'post' || config.method === 'put') {
-      config.data = {
-        ...config.data,
-        ...(process.env.NODE_ENV === 'development' && {
-          Apikey: process.env.NEXT_PUBLIC_API_PLEASANTER_API_KEY,
-        }),
-        ApiVersion: '1.1',
-      }
-    }
-    return config
-  },
-  error => {
-    return Promise.reject(error)
+type PleasanterItemsResponse<T> = {
+  Response?: {
+    Data?: T[]
+    TotalCount?: number
+    Offset?: number
+    PageSize?: number
   }
-)
+}
 
-// Response Interceptor
-axiosInstance.interceptors.response.use(
-  response => {
-    return response
-  },
-  async error => {
-    if (error.response && error.response.data) {
-      const contentType = error.response.header['content-type']
-      if (contentType && contentType.includes('application/json')) {
-        try {
-          const text = await error.response.data.text() // Convert Blob to Text for handle error
-          const json = JSON.parse(text)
-          error.response.data = json
-        } catch (err) {
-          console.error('Failed to parse JSON :', err)
-        }
-      }
+export default async function getSteptaskSyouhin(
+  httpRequest: HttpRequest,
+  payload: PayloadSteptaskSyouhin
+): Promise<ApiResponse<SteptaskItem[]>> {
+  const response = await httpRequest(() =>
+    axiosInstance.post<PleasanterItemsResponse<SteptaskItem>>(TOUEN_API_ENDPOINTS.ITEMS_GET, payload)
+  )
+
+  if (!response) {
+    return {
+      code: 500,
+      message: 'httpRequest returned undefined',
+      data: null,
     }
-    return Promise.reject(error)
   }
-)
+
+  if (axios.isAxiosError(response)) {
+    return {
+      code: response.response?.status ?? response.code ?? 500,
+      message: response.message,
+      data: null,
+    }
+  }
+
+  const data = response.data?.Response?.Data ?? []
+  const pagination = {
+    Offset: Number(response.data?.Response?.Offset ?? payload.Offset ?? 0),
+    PageSize: Number(response.data?.Response?.PageSize ?? payload.PageSize ?? 0),
+    TotalCount: Number(response.data?.Response?.TotalCount ?? 0),
+  }
+
+  return {
+    code: 200,
+    message: 'api get successed',
+    data,
+    pagination,
+  }
+}
 
 ```
 
