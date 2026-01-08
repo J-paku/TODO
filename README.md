@@ -1,231 +1,4 @@
 ```
-// React
-import { useEffect, useState, useCallback } from 'react'
-// Hooks
-import { useTouenInitializer } from './hooks/useTouenInitializer'
-import { usePrintTouenOrder } from './hooks/usePrintTouenOrder'
-import { useManageTouenPopup } from './hooks/useManageTouenPopup'
-import { useNowTime } from './hooks/useNowTime'
-import { useLockBodyScroll } from './hooks/useLockBodyScroll'
-import { useFetchTouenItems } from './hooks/useFetchTouenItems'
-// Libs
-import { createIsIncrement } from './lib/pressHandlers'
-// Components
-import { hapticOn } from 'components/hapticOn'
-import ClientSearchModal from 'components/ClientSearchModal'
-import ClientSelectorBox from 'components/ClientSelectorBox'
-import ToastPopup from 'components/ToastPopup'
-import PrintControlBar from './components/PrintControlBar'
-import ProductQuantityPopup from './components/ProductQuantityPopup'
-import ProductList from './components/ProductList'
-import { useTouenRefreshWithMinDisplay } from '@/hooks/useTouenRefreshWithMinDisplay'
-
-export default function TouenCount() {
-  // 1) 初期データ
-  const {
-    sessionUserName,
-    customers,
-    nearestClientName,
-    setNearestClientName,
-    sortedItems,
-    moyoriSaki,
-    onLocateNearest,
-    products,
-    setProducts,
-    setProductsMap,
-    itemObject,
-    setItemObject,
-    touenItems,
-    setTouenItems,
-    previewRowsOnce,
-  } = useTouenInitializer()
-
-  // 2) 商品取得
-  const { listLoading, stableFetchComplete, forceRefresh } = useFetchTouenItems({
-    nearestClientName,
-    previewRowsOnce,
-    customers,
-    touenItems,
-    setTouenItems,
-    setItemObject,
-    setProducts,
-    setProductsMap,
-    // oneShotPerClient は true のまま（自動fetchの暴発を抑える）
-  })
-
-  // 3) 印刷
-  const {
-    printStatus,
-    setPrintStatus,
-    showToast,
-    setShowToast,
-    second,
-    setSecond,
-    handleClick,
-    onCancelPrint,
-    isPrintingRetrying,
-    setPrintDisabled,
-    isDisabled,
-    buttonStyle,
-  } = usePrintTouenOrder({
-    nearestClientName: nearestClientName ?? '',
-    products,
-    itemObject,
-    sessionUserName,
-  })
-
-  // 4) +/- 操作
-  const isIncrement = createIsIncrement({
-    hapticOn,
-    setProducts,
-    nearestClientName: nearestClientName ?? '',
-    setProductsMap,
-  })
-
-  // 5) 長押しポップアップ
-  const {
-    selectedProduct,
-    setSelectedProduct,
-    showPopup,
-    setShowPopup,
-    inputRef,
-    handlePressStart,
-    handlePressEnd,
-    itemQtySave,
-  } = useManageTouenPopup({
-    setProducts,
-    setSecond,
-    setPrintStatus,
-    setShowToast,
-  })
-
-  // 6) UI補助
-  const todayTime = useNowTime(5000)
-  const [modalVisible, setModalVisible] = useState(false)
-  const [searchText, setSearchText] = useState('')
-
-  useLockBodyScroll()
-
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  // 7) 選択時に必ず最新取得（옵션 B 핵심）
-  const handleSelectClient = useCallback(
-    async (name: string) => {
-      // 同一名でも「再選択」され得るため、ここで必ず fetch を叩く
-      setNearestClientName(name)
-      await forceRefresh(name)
-    },
-    [setNearestClientName, forceRefresh]
-  )
-
-  const popupElement =
-    showPopup && selectedProduct ? (
-      <ProductQuantityPopup
-        showPopup={showPopup}
-        setShowPopup={setShowPopup}
-        selectedProduct={selectedProduct}
-        setSelectedProduct={setSelectedProduct}
-        inputRef={inputRef}
-        itemQtySave={itemQtySave}
-      />
-    ) : null
-
-  const clientSearchModalElement = modalVisible ? (
-    <ClientSearchModal
-      searchText={searchText}
-      setSearchText={setSearchText}
-      sortedItems={sortedItems}
-      // モーダル側でも選択=最新取得に寄せるため、setNearestClientName だけ渡すのはやめる
-      setNearestClientName={async (name: string) => {
-        await handleSelectClient(name)
-      }}
-      setModalVisible={setModalVisible}
-      userLatitude={null}
-      userLongitude={null}
-      currentSelectedName={nearestClientName ?? undefined}
-    />
-  ) : null
-
-  const toastElement = showToast ? (
-    <ToastPopup message={printStatus} setToast={setShowToast} position="center" second={second} />
-  ) : null
-
-  const printCancelButtonElement = isPrintingRetrying ? (
-    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] text-white">
-      <button
-        type="button"
-        onClick={onCancelPrint}
-        className="px-5 py-2 rounded-full bg-black/90 border border-gray-300 text-white shadow-md backdrop-blur-md active:translate-y-px"
-      >
-        キャンセル
-      </button>
-    </div>
-  ) : null
-
-  // 下スワイプ更新：選択中の得意先で強制更新
-  const { handleRefresh } = useTouenRefreshWithMinDisplay(async () => {
-    if (!nearestClientName) return
-    await forceRefresh(nearestClientName)
-  }, 1000)
-
-  return (
-    <div className="bg-gray-100 overflow-hidden select-none flex flex-1 flex-col">
-      {popupElement}
-      {clientSearchModalElement}
-
-      <div className="p-2 md:h-auto">
-        {toastElement}
-        {printCancelButtonElement}
-
-        <ClientSelectorBox
-          nearestClientName={nearestClientName ?? undefined}
-          nearestClientData={moyoriSaki ?? ''}
-          onOpenModal={() => setModalVisible(true)}
-          // 選択イベントで必ず最新取得
-          onClientNameChange={async name => {
-            await handleSelectClient(name)
-          }}
-          // 現在位置から最寄りを再計算 → 再計算後に最新取得
-          onLocateNearest={async () => {
-            await onLocateNearest()
-            if (nearestClientName) {
-              await forceRefresh(nearestClientName)
-            }
-          }}
-        />
-
-        <div className="flex justify-center content-center mt-2 text-sm font-semibold bg-gray-200 border border-gray-300 w-[98%] text-center p-1 rounded-lg">
-          {todayTime}
-        </div>
-
-        <ProductList
-          products={products}
-          listLoading={listLoading}
-          stableFetchComplete={stableFetchComplete}
-          handlePressStart={handlePressStart}
-          handlePressEnd={handlePressEnd}
-          isIncrement={isIncrement}
-          handleKeyDown={() => {}}
-          onSwipeUpRefresh={handleRefresh}
-        />
-
-        <PrintControlBar
-          handleClick={handleClick}
-          isDisabled={isDisabled}
-          buttonStyle={buttonStyle}
-          onChangePrintDisabled={setPrintDisabled}
-        />
-      </div>
-    </div>
-  )
-}
-
-```
-
-```
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -233,19 +6,23 @@ import type { Dispatch, SetStateAction } from 'react'
 import { useErrorBoundary } from 'react-error-boundary'
 import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
 
+// サービスレイヤー（既存構造を維持）
 import useTouenCount from './useTouenCountActions'
 import type { PayloadSteptaskSyouhin } from '@/api/touen/count/getSteptaskSyouhin'
 
+// 既存型
 import type { Customer, Product } from '@/api/loadCustomerData'
 import type { ObjectResult, SteptaskItem } from '../types/types'
 
+// 既存ロジック（商品初期化）
 import { getInitialProductsForClient } from '../lib/getInitialProductsForClient'
 
-// 元ロジック依存
+// 元ロジック依存（パスは既存のまま）
 import { alphabetClass, numberClass } from '../services/classesConstants'
 import { fetchDetail } from '../services/steptaskDetailService'
 import { normalizePrice } from '../services/format'
 
+/** ---- 型定義 ---- */
 type PreviewRow = {
   タイトル?: string
   Title?: string
@@ -275,14 +52,8 @@ type UseTouenItemsReturn = {
   forceRefresh: (clientName?: string) => Promise<void>
 }
 
-/** 値→タイムスタンプ（不正値は 0） */
-const ts = (v: unknown): number => {
-  const t = Date.parse(String(v ?? ''))
-  return Number.isFinite(t) ? t : 0
-}
-
 /**
- * StepTask item 加工（元の getSteptaskSyouhin 内の加工を移管）
+ * StepTask item 加工（元の getSteptaskSyouhin 内の加工をそのまま移管）
  * - 元ロジック通り mutate する
  */
 async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
@@ -298,6 +69,7 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
 
     const classHash = item.ClassHash as Record<string, string>
 
+    // 値ありキー抽出
     const alphaFirstKeys = alphabetClass.filter(k => {
       const v = classHash?.[k]
       return v !== undefined && v !== null && String(v).trim() !== ''
@@ -307,6 +79,7 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
       return v !== undefined && v !== null && String(v).trim() !== ''
     })
 
+    // 末尾値ありインデックス
     const alphabetMasterIndex =
       alphabetClass
         .map((k, idx) => ({ idx, v: classHash?.[k] }))
@@ -322,6 +95,7 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
     const testAlphaFirstKeys = alphabetClass.filter((_, idx) => idx <= alphabetMasterIndex)
     const testAlphaSecondKeys = numberClass.filter((_, idx) => idx <= numberMasterIndex)
 
+    // ドラフト
     const draftPakuCustomHash: Record<string, string | null> = {}
     const draftPakuCustomHashTwo: Record<string, string> = {}
     const draftPakuCustomHashThree: Record<string, string> = {}
@@ -332,6 +106,7 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
 
     const tasksForItem: Promise<void>[] = []
 
+    // 英字側（CustomA〜）
     const alphaFirstCount = alphaFirstKeys.length
     alphaFirstKeys.forEach((key, idx) => {
       const value = classHash[key]
@@ -350,6 +125,7 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
       )
     })
 
+    // 数字側（Custom001〜）
     alphaSecondKeys.forEach((key, idx) => {
       const value = classHash[key]
       if (!value) return
@@ -368,6 +144,7 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
       )
     })
 
+    // MasterIndex付番
     const createAlphaKeyGen = () => {
       let i = 0
       return () => `Custom${String.fromCharCode(65 + i++)}`
@@ -405,11 +182,13 @@ async function enrichItemsInPlace(list: SteptaskItem[]): Promise<void> {
 
     await Promise.all(tasksForItem)
 
+    // 単一コミット
     Object.assign(item.PakuCustomHash as Record<string, string | null>, draftPakuCustomHash)
     Object.assign(item.PakuCustomHashTwo as Record<string, string>, draftPakuCustomHashTwo)
     Object.assign(item.PakuCustomHashThree as Record<string, string>, draftPakuCustomHashThree)
     Object.assign(item.PakuCustomHashFour as Record<string, string>, draftPakuCustomHashFour)
 
+    // 注意：元ロジックは ClassHash を Custom キーで上書きする
     Object.assign(item.ClassHash as Record<string, string>, draftClassHash)
 
     Object.assign(item.PakuCustomHashProductIndex as Record<string, number>, draftPakuCustomHashProductIndex)
@@ -422,14 +201,11 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
 
   const {
     nearestClientName,
-    previewRowsOnce,
     customers,
-    touenItems,
     setTouenItems,
     setItemObject,
     setProducts,
     setProductsMap,
-    oneShotPerClient = true,
   } = params
 
   const { getSteptaskSyouhin } = useTouenCount()
@@ -438,19 +214,12 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   const [dataEvaluatedOnce, setDataEvaluatedOnce] = useState(false)
   const [stableFetchComplete, setStableFetchComplete] = useState(false)
 
-  /** 得意先別の実行済み指標（previewTs または Date.now を保存） */
-  const ranForClientRef = useRef<Map<string, number>>(new Map())
-
-  /** 同一得意先の多重 fetch を防止 */
+  // 同一得意先への多重 fetch を防止
   const inFlightRef = useRef<Set<string>>(new Set())
+  // 同じ依存関係で effect が再評価されても一度だけにするためのキー
+  const lastRequestedKeyRef = useRef<string>('')
 
-  /** 既存 touenItems を最新として参照するための ref */
-  const touenItemsRef = useRef<SteptaskItem[]>([])
-  useEffect(() => {
-    touenItemsRef.current = Array.isArray(touenItems) ? touenItems : []
-  }, [touenItems])
-
-  /** fetchComplete がフレーム境界で安定したことを別フラグへ反映 */
+  // fetchComplete がフレーム境界で安定したことを別フラグへ反映
   useEffect(() => {
     let rafId: number | null = null
     if (!listLoading && dataEvaluatedOnce) {
@@ -463,21 +232,16 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
     }
   }, [listLoading, dataEvaluatedOnce])
 
-  /** 最寄り先が変わるたびに実行済みを解除（自動 fetch を許可） */
-  useEffect(() => {
-    if (nearestClientName) {
-      ranForClientRef.current.delete(nearestClientName)
-    }
-  }, [nearestClientName])
-
   /**
-   * ページ全取得(Title ExactMatch)
+   * ページ全取得（Title ExactMatch）
    * - API は「ページ raw」を返す想定
+   * - TotalCount を initial で取得し、全ページを並列取得する
    */
   const fetchAllByClient = useCallback(
     async (clientName: string): Promise<SteptaskItem[]> => {
       const pageSize = 200
 
+      // 初回：TotalCount 確認（PageSize=1）
       const initialPayload: PayloadSteptaskSyouhin = {
         Offset: 0,
         PageSize: 1,
@@ -491,6 +255,7 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
       const totalCount = initial?.pagination?.TotalCount ?? 0
       if (totalCount <= 0) return []
 
+      // 全ページ取得
       const pageRequests: Promise<ReturnType<typeof getSteptaskSyouhin>>[] = []
       for (let offset = 0; offset < totalCount; offset += pageSize) {
         pageRequests.push(
@@ -505,6 +270,7 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
       const responses = await Promise.all(pageRequests)
       const list = responses.flatMap(r => r?.list ?? [])
 
+      // item 加工（元ロジック）
       await enrichItemsInPlace(list)
 
       return list
@@ -513,9 +279,8 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   )
 
   /**
-   * 明示的な強制更新（選択イベントから呼ぶ）
-   * - 常に最新取得
-   * - inFlight と markRan を先に入れて重複を抑止
+   * 外部からの強制更新
+   * - index.tsx を変えない前提でも、将来的に利用できるよう維持する
    */
   const forceRefresh = useCallback(
     async (clientName?: string) => {
@@ -523,8 +288,6 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
       if (inFlightRef.current.has(clientName)) return
 
       inFlightRef.current.add(clientName)
-      ranForClientRef.current.set(clientName, Date.now())
-
       setListLoading(true)
 
       try {
@@ -556,53 +319,23 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   )
 
   /**
-   * 自動 fetch（初回・最寄り変更時の保険）
-   * - 選択イベント側(forceRefresh)が主で、ここは補助
+   * 自動 fetch
+   * - nearestClientName が変わったら必ず最新取得
+   * - previewRowsOnce などの one-shot 判定は行わない
+   * - 無限ループ防止のため、同一キーでの再入を lastRequestedKey で抑止する
    */
   useEffect(() => {
     if (!nearestClientName || nearestClientName === '最寄り先を選択') return
     if (!Array.isArray(customers) || customers.length === 0) return
+
+    const key = `${String(nearestClientName).trim()}::${customers.length}`
+    if (lastRequestedKeyRef.current === key) return
+    lastRequestedKeyRef.current = key
+
     if (inFlightRef.current.has(nearestClientName)) return
 
-    const rows: PreviewRow[] = previewRowsOnce ?? []
-    const rowForClient = rows.find(r => {
-      const title = r?.タイトル ?? r?.Title ?? ''
-      return String(title).trim() === String(nearestClientName).trim()
-    })
-
-    const currentPreviewTs = ts(rowForClient?.更新日時 ?? rowForClient?.UpdatedTime ?? rowForClient?.updatedTime)
-    const lastTs = ranForClientRef.current.get(nearestClientName) ?? -1
-
-    // one-shot: 最新ならスキップ（previewTs が 0 でもスキップ可能）
-    if (oneShotPerClient && lastTs >= currentPreviewTs) {
-      // 画面表示用 products が空の場合は手元データから補完のみ行う
-      ;(async () => {
-        try {
-          const source = touenItemsRef.current
-          if (!Array.isArray(source) || source.length === 0) return
-
-          const products = await getInitialProductsForClient(
-            nearestClientName,
-            customers,
-            source,
-            obj => setItemObject(obj),
-            source
-          )
-          setProducts(products)
-          setProductsMap(prev => ({ ...prev, [nearestClientName]: products }))
-        } catch {
-          // noop
-        }
-      })()
-      return
-    }
-
     let aborted = false
-
-    // 自動側も多重防止
     inFlightRef.current.add(nearestClientName)
-    ranForClientRef.current.set(nearestClientName, currentPreviewTs || Date.now())
-
     setListLoading(true)
 
     ;(async () => {
@@ -643,9 +376,7 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
     }
   }, [
     nearestClientName,
-    previewRowsOnce,
     customers,
-    oneShotPerClient,
     fetchAllByClient,
     setTouenItems,
     setItemObject,
@@ -657,5 +388,4 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   const fetchComplete = !listLoading && dataEvaluatedOnce
   return { listLoading, fetchComplete, stableFetchComplete, forceRefresh }
 }
-
 ```
