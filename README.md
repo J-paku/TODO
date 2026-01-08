@@ -1,110 +1,61 @@
 ```
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import type { Customer, Product } from '@/api/loadCustomerData'
-import { logSteptaskErrorCause } from '@/api/fetchSteptask'
 import { getSteptaskSyouhin } from '../services/fetchSteptask'
-import { useRouter } from 'next/router'
-import { ObjectResult, SteptaskItem } from '../types/types'
 import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
+import { logSteptaskErrorCause } from '@/api/fetchSteptask'
 import { useErrorBoundary } from 'react-error-boundary'
-
-/** ---- 型定義 ---- */
-type ClassKey = `Class${Uppercase<string>}` // 'ClassA' ~ 'ClassZ'
-type ClassHash = Partial<Record<ClassKey, string>>
-type PakuCustomHash = Partial<Record<`Custom${string | number}`, string>>
-type DescriptionKey = `Description${Uppercase<string>}` // 'DescriptionA' ~ 'DescriptionZ'
-type DescriptionHash = Partial<Record<DescriptionKey, string>>
-
-export interface TouenItem {
-  ItemTitle?: string
-  タイトル?: string
-  UpdatedTime?: string
-  updatedTime?: string
-  ResultID?: string
-  ResultId?: string
-  SiteId?: string
-  ClassHash?: ClassHash
-  PakuCustomHash?: PakuCustomHash
-  DescriptionHash?: DescriptionHash
-}
-
-interface PreviewRow {
-  タイトル?: string
-  Title?: string
-  更新日時?: string
-  UpdatedTime?: string
-  updatedTime?: string
-}
+import type { Customer, Product } from '@/api/loadCustomerData'
+import type { ObjectResult, SteptaskItem } from '../types/types'
 
 type ProductsMap = Record<string, Product[]>
 
 type UseTouenItemsParams = {
-  /** 最寄り先名（未選択時は null） */
-  nearestClientName: string | null
-  /** 一度だけ取得されたプレビュー行 */
-  previewRowsOnce: PreviewRow[] | null
-  customers: Customer[]
-  /** 互換維持のため: 本フック内では参照しない（外部状態のみ更新） */
-  touenItems?: SteptaskItem[]
   setTouenItems: Dispatch<SetStateAction<SteptaskItem[]>>
   setItemObject: Dispatch<SetStateAction<ObjectResult>>
   setProducts: Dispatch<SetStateAction<Product[]>>
   setProductsMap: Dispatch<SetStateAction<ProductsMap>>
-  oneShotPerClient?: boolean
 }
 
 type UseTouenItemsReturn = {
   listLoading: boolean
   fetchComplete: boolean
   stableFetchComplete: boolean
-  forceRefresh: (clientName?: string) => void
+  /** 明示的に呼ぶ：これ以外では取得しない */
+  fetchTouenItems: (clientName: string, options?: { versionTs?: number; force?: boolean }) => Promise<void>
+  /** 任意：直近取得したclient */
+  lastClientName: string | null
 }
 
-/** ---- ユーティリティ ---- */
 /** 値→タイムスタンプ（不正値は 0） */
 const ts = (v: unknown): number => {
   const t = Date.parse(String(v ?? ''))
   return Number.isFinite(t) ? t : 0
 }
 
-/** ---- Hook 本体 ---- */
 export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsReturn {
-  const { showBoundary } = useErrorBoundary() // 404.tsxにリンクする（/ABC）
+  const { showBoundary } = useErrorBoundary()
 
-  const {
-    nearestClientName,
-    previewRowsOnce,
-    customers,
-    setTouenItems,
-    setItemObject,
-    setProducts,
-    setProductsMap,
-    oneShotPerClient = true,
-  } = params
+  const { setTouenItems, setItemObject, setProducts, setProductsMap } = params
 
   const [listLoading, setListLoading] = useState(false)
   const [dataEvaluatedOnce, setDataEvaluatedOnce] = useState(false)
   const [stableFetchComplete, setStableFetchComplete] = useState(false)
+  const [lastClientName, setLastClientName] = useState<string | null>(null)
 
-  /** 実行済みタイムスタンプを得意先単位で保持（APIでも一度きり制御したい場合用） */
-  const ranForClientRef = useRef<Map<string, number>>(new Map())
+  /** 最新リクエストのみ反映するためのID */
+  const reqIdRef = useRef(0)
+  /** clientごとの最新反映済みversionTs（任意でスキップに使う） */
+  const appliedVersionRef = useRef<Map<string, number>>(new Map())
+  /** in-flight（同一clientの連打）を1本にまとめる */
+  const inflightRef = useRef<Map<string, Promise<void>>>(new Map())
+  /** unmount後のsetState防止 */
+  const aliveRef = useRef(true)
 
-  /** 再取得の強制（得意先単位 or 全体） */
-  const forceRefresh = useCallback(async (clientName?: string) => {
-    if (!clientName) return
-    setListLoading(true)
-    try {
-      const apiList: SteptaskItem[] = (await getSteptaskSyouhin(clientName)) ?? []
-      setTouenItems(apiList)
-      setDataEvaluatedOnce(true)
-    } catch (e) {
-      showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
-      console.error(e)
-      setDataEvaluatedOnce(true)
-    } finally {
-      setListLoading(false)
-      ranForClientRef.current.set(clientName, Date.now())
+  useEffect(() => {
+    aliveRef.current = true
+    return () => {
+      aliveRef.current = false
     }
   }, [])
 
@@ -112,7 +63,9 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   useEffect(() => {
     let rafId: number | null = null
     if (!listLoading && dataEvaluatedOnce) {
-      rafId = requestAnimationFrame(() => setStableFetchComplete(true))
+      rafId = requestAnimationFrame(() => {
+        if (aliveRef.current) setStableFetchComplete(true)
+      })
     } else {
       setStableFetchComplete(false)
     }
@@ -121,85 +74,71 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
     }
   }, [listLoading, dataEvaluatedOnce])
 
-  /** 最寄り先が変わるたびにワンショット制御を解除 */
-  useEffect(() => {
-    if (nearestClientName) {
-      ranForClientRef.current.delete(nearestClientName)
-    }
-  }, [nearestClientName])
+  const fetchTouenItems = useCallback(
+    async (clientName: string, options?: { versionTs?: number; force?: boolean }) => {
+      const name = String(clientName ?? '').trim()
+      if (!name) return
 
-  /** 顧客がロードされたら全体のワンショット制御を解除 */
-  useEffect(() => {
-    if (customers.length > 0) {
-      forceRefresh()
-    }
-  }, [customers.length, forceRefresh])
+      const versionTs = ts(options?.versionTs)
+      const force = Boolean(options?.force)
 
-  const router = useRouter()
-
-  /** いつでも API → 整合確認 → 画面状態更新（IndexedDBは使用しない） */
-  useEffect(() => {
-    if (!nearestClientName || nearestClientName === '最寄り先を選択') return
-    if (!Array.isArray(customers) || customers.length === 0) return
-
-    const rows: PreviewRow[] = previewRowsOnce ?? []
-    const rowForClient = rows.find(r => {
-      const title = r?.タイトル ?? r?.Title ?? ''
-      return String(title).trim() === String(nearestClientName).trim()
-    })
-    const currentPreviewTs = ts(
-      rowForClient?.更新日時 ?? rowForClient?.UpdatedTime ?? rowForClient?.updatedTime
-    )
-    const lastTs = ranForClientRef.current.get(nearestClientName) ?? -1
-    if (oneShotPerClient && lastTs >= currentPreviewTs) return
-
-    setListLoading(true)
-    let aborted = false
-
-    const errorList: string[] = [] // エラーメッセージArray
-
-    ;(async () => {
-      try {
-        const apiList: SteptaskItem[] = (await getSteptaskSyouhin(nearestClientName)) ?? []
-        if (!aborted) {
-          setTouenItems(apiList)
-          setDataEvaluatedOnce(true)
-        }
-      } catch (error) {
-        setDataEvaluatedOnce(true)
-        errorList.push(String(error)) // エラー文字列積み重ねる
-        showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
-      } finally {
-        if (!aborted) {
-          setListLoading(false)
-          ranForClientRef.current.set(nearestClientName, currentPreviewTs)
-          if (errorList.length > 0) {
-            await logSteptaskErrorCause(errorList.join('\n'))
-            showBoundary(
-              new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR)
-            )
-          }
+      // 既に同じversionを適用済みならスキップ（forceなら無視）
+      if (!force) {
+        const applied = appliedVersionRef.current.get(name)
+        if (applied !== undefined && applied >= versionTs && versionTs !== 0) {
+          return
         }
       }
-    })()
 
-    return () => {
-      aborted = true
-      setListLoading(false)
-    }
-  }, [
-    String(nearestClientName),
-    previewRowsOnce,
-    customers,
-    oneShotPerClient,
-    setItemObject,
-    setTouenItems,
-    setProducts,
-    setProductsMap,
-  ])
+      // 同一clientの連打は in-flight を再利用
+      const existing = inflightRef.current.get(name)
+      if (existing) return existing
+
+      const myReqId = ++reqIdRef.current
+      setListLoading(true)
+      setLastClientName(name)
+
+      const run = (async () => {
+        const errorList: string[] = []
+        try {
+          const apiList: SteptaskItem[] = (await getSteptaskSyouhin(name)) ?? []
+
+          // 途中で別リクエストが走っていたら反映しない（最新のみ）
+          if (!aliveRef.current) return
+          if (myReqId !== reqIdRef.current) return
+
+          setTouenItems(apiList)
+          setDataEvaluatedOnce(true)
+
+          // versionTs が 0 の場合は「取得時刻」を入れておく（任意）
+          appliedVersionRef.current.set(name, versionTs !== 0 ? versionTs : Date.now())
+        } catch (e) {
+          errorList.push(String(e))
+          if (!aliveRef.current) return
+          setDataEvaluatedOnce(true)
+          // 必要ならログ送信
+          try {
+            await logSteptaskErrorCause(errorList.join('\n'))
+          } catch (_) {
+            // ログ失敗は握りつぶし（取得失敗の本筋ではない）
+          }
+          showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
+        } finally {
+          if (!aliveRef.current) return
+          // 最新リクエストだけがローディングを落とす
+          if (myReqId === reqIdRef.current) setListLoading(false)
+          inflightRef.current.delete(name)
+        }
+      })()
+
+      inflightRef.current.set(name, run)
+      return run
+    },
+    [setTouenItems, showBoundary]
+  )
 
   const fetchComplete = !listLoading && dataEvaluatedOnce
-  return { listLoading, fetchComplete, stableFetchComplete, forceRefresh }
+  return { listLoading, fetchComplete, stableFetchComplete, fetchTouenItems, lastClientName }
 }
 
 ```
