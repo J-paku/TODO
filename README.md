@@ -1,293 +1,51 @@
 ```
-import axios from 'axios'
-import { axiosInstance, ApiResponse } from '@/api'
-import type { HttpRequest } from '@/hooks/useHttp'
-import { TOUEN_API_ENDPOINTS } from '@/constants/api/touen'
-import type { SteptaskItem } from '@/features/touen/types/types' // 프로젝트 실제 경로에 맞춰 조정하세요
+// React
+import { useEffect, useState } from 'react'
+// Hooks
+import { useTouenInitializer } from './hooks/useTouenInitializer'
+import { usePrintTouenOrder } from './hooks/usePrintTouenOrder'
+import { useManageTouenPopup } from './hooks/useManageTouenPopup'
+import { useNowTime } from './hooks/useNowTime'
+import { useLockBodyScroll } from './hooks/useLockBodyScroll'
+import { useFetchTouenItems } from './hooks/useFetchTouenItems'
+// Libs
+import { createIsIncrement } from './lib/pressHandlers'
+// Components
+import { hapticOn } from 'components/hapticOn'
+import ClientSearchModal from 'components/ClientSearchModal'
+import ClientSelectorBox from 'components/ClientSelectorBox'
+import ToastPopup from 'components/ToastPopup'
+import PrintControlBar from './components/PrintControlBar'
+import ProductQuantityPopup from './components/ProductQuantityPopup'
+import ProductList from './components/ProductList'
+import { useTouenRefreshWithMinDisplay } from '@/hooks/useTouenRefreshWithMinDisplay'
 
-export type PayloadSteptaskSyouhin = {
-  ApiVersion?: number | string
-  ApiKey?: string
-  Offset: number
-  PageSize: number
-  View: {
-    ColumnFilterHash: {
-      Title: string
-    }
-    ColumnFilterSearchTypes: {
-      Title: 'ExactMatch' | string
-    }
-  }
-}
-
-type PleasanterItemsResponse<T> = {
-  Response?: {
-    Data?: T[]
-    TotalCount?: number
-    Offset?: number
-    PageSize?: number
-  }
-}
-
-export default async function getSteptaskSyouhin(
-  httpRequest: HttpRequest,
-  payload: PayloadSteptaskSyouhin
-): Promise<ApiResponse<SteptaskItem[]>> {
-  const response = await httpRequest(() =>
-    axiosInstance.post<PleasanterItemsResponse<SteptaskItem>>(TOUEN_API_ENDPOINTS.ITEMS_GET, payload)
-  )
-
-  if (!response) {
-    return {
-      code: 500,
-      message: 'httpRequest returned undefined',
-      data: null,
-    }
-  }
-
-  if (axios.isAxiosError(response)) {
-    return {
-      code: response.response?.status ?? response.code ?? 500,
-      message: response.message,
-      data: null,
-    }
-  }
-
-  const data = response.data?.Response?.Data ?? []
-  const pagination = {
-    Offset: Number(response.data?.Response?.Offset ?? payload.Offset ?? 0),
-    PageSize: Number(response.data?.Response?.PageSize ?? payload.PageSize ?? 0),
-    TotalCount: Number(response.data?.Response?.TotalCount ?? 0),
-  }
-
-  return {
-    code: 200,
-    message: 'api get successed',
-    data,
-    pagination,
-  }
-}
-
-```
-
-```
-import type { HttpRequest } from '@/hooks/useHttp'
-import type { ApiResponse } from '@/api'
-
-import getTouenList, { PayloadGetTouenList } from './list/getTouenList'
-import createTouenCount, { PayloadCreateTouenCount } from './count/createTouenCount'
-import getTouenClientId from './count/getTouenClientId'
-import getSelectedTouenPrice, { PayloadSelectedTouenPrice } from './count/getSelectedTouenPrice'
-import deleteSelectedTouen from './list/deleteSelectedTouen'
-import { FilterTouenData, FilterTouenDataNotIn, TouenList } from './count/types'
-import getTouenStepTaskDataIn, { PayloadGetTouenStepTaskDataIn } from './list/getTouenStepTaskDataIn'
-import getTouenStepTaskDataNotIn, {
-  PayloadGetTouenStepTaskDataNotIn,
-} from './list/getTouenStepTaskDataNotIn'
-
-import getSteptaskSyouhin, { PayloadSteptaskSyouhin } from './count/getSteptaskSyouhin'
-import type { SteptaskItem } from '@/features/touen/types/types' // 프로젝트 실제 경로에 맞춰 조정하세요
-
-interface TouenApi {
-  // 登園カウント
-  createTouenCount: (payload: PayloadCreateTouenCount) => Promise<ApiResponse<string>>
-  getTouenClientId: (resultId: string) => Promise<ApiResponse<string>>
-  getSelectedTouenPrice: (payload: PayloadSelectedTouenPrice) => Promise<ApiResponse<string>>
-
-  // ★ StepTask 商品（ITEMS_GET）
-  getSteptaskSyouhin: (payload: PayloadSteptaskSyouhin) => Promise<ApiResponse<SteptaskItem[]>>
-
-  // 登園リスト
-  getTouenList: (
-    payload: PayloadGetTouenList<FilterTouenData | FilterTouenDataNotIn>
-  ) => Promise<ApiResponse<TouenList[]>>
-  getTouenStepTaskDataIn: (payload: PayloadGetTouenStepTaskDataIn) => Promise<ApiResponse<string>>
-  getTouenStepTaskDataNotIn: (
-    payload: PayloadGetTouenStepTaskDataNotIn
-  ) => Promise<ApiResponse<string>>
-  deleteSelectedTouen: (result: string) => Promise<ApiResponse<string>>
-}
-
-export default function touen(httpRequest: HttpRequest): TouenApi {
-  return {
-    // 登園カウント
-    createTouenCount: payload => createTouenCount(httpRequest, payload),
-    getTouenClientId: resultId => getTouenClientId(httpRequest, resultId),
-    getSelectedTouenPrice: payload => getSelectedTouenPrice(httpRequest, payload),
-
-    // ★ StepTask
-    getSteptaskSyouhin: payload => getSteptaskSyouhin(httpRequest, payload),
-
-    // 登園リスト
-    getTouenList: payload => getTouenList(httpRequest, payload),
-    getTouenStepTaskDataIn: payload => getTouenStepTaskDataIn(httpRequest, payload),
-    getTouenStepTaskDataNotIn: payload => getTouenStepTaskDataNotIn(httpRequest, payload),
-    deleteSelectedTouen: resultId => deleteSelectedTouen(httpRequest, resultId),
-  }
-}
-
-```
-
-```
-// サービスレイヤー
-import { useMemo } from 'react'
-import { PayloadCreateTouenCount } from '@/api/touen/count/createTouenCount'
-import { PayloadSelectedTouenPrice } from '@/api/touen/count/getSelectedTouenPrice'
-import useHttp from '@/hooks/useHttp'
-import useToast from '@/hooks/useToast'
-import useSteptaskCreateErrorLog from '@/hooks/useSteptaskCreateErrorLog'
-import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
-import { useErrorBoundary } from 'react-error-boundary'
-import getSteptaskSyouhinPayloadType, {
-  PayloadSteptaskSyouhin,
-} from '@/api/touen/count/getSteptaskSyouhin'
-import type { SteptaskItem } from '@/features/touen/types/types' // 프로젝트 경로에 맞게 조정
-
-export default function useTouenCount() {
-  const { api } = useHttp()
-  const { openToast } = useToast()
-  const { showBoundary } = useErrorBoundary()
-  const { createErrorLog } = useSteptaskCreateErrorLog()
-
-  const createTouenCount = useMemo(
-    () => async (payload: PayloadCreateTouenCount) => {
-      const response = await api.touen.createTouenCount(payload)
-      if (response.code !== 200) {
-        await createErrorLog(
-          'createTouenCount',
-          response._error ?? response.message,
-          JSON.stringify(payload)
-        )
-        showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_MASTER_BULKUPSERT_ERROR))
-      }
-      return response
-    },
-    [api, createErrorLog, showBoundary]
-  )
-
-  const getTouenClientId = useMemo(
-    () => async (resultId: string) => {
-      const response = await api.touen.getTouenClientId(resultId)
-      if (response.code !== 200) {
-        openToast.error(response.message, 'center')
-        return
-      }
-      return response.data
-    },
-    [api, openToast]
-  )
-
-  const getSelectedTouenPrice = useMemo(
-    () => async (payload: PayloadSelectedTouenPrice) => {
-      const response = await api.touen.getSelectedTouenPrice(payload)
-      if (response.code !== 200) {
-        openToast.error(response.message, 'center')
-        return
-      }
-      return response.data
-    },
-    [api, openToast]
-  )
-
-  /**
-   * ★ ここでは「1回分の ITEMS_GET」を返すだけ
-   * 　全ページ取得・加工は useFetchTouenItems 側に寄せる
-   */
-  const getSteptaskSyouhin = useMemo(
-    () => async (payload: PayloadSteptaskSyouhin) => {
-      const response = await api.touen.getSteptaskSyouhin(payload)
-      if (response.code !== 200) {
-        // 必要ならここで toast を出す。ただし自動エラーを嫌うなら黙る方が安全
-        // openToast.error(response.message, 'center')
-        return null
-      }
-      return response
-    },
-    [api]
-  )
-
-  return { createTouenCount, getTouenClientId, getSelectedTouenPrice, getSteptaskSyouhin }
-}
-
-```
-
-```
-'use client'
-
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
-import type { Customer, Product } from '@/api/loadCustomerData'
-import { useErrorBoundary } from 'react-error-boundary'
-import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
-import useTouenCount from '@/features/touen/hooks/useTouenCountActions' // 실제 경로로 조정
-
-import type { ObjectResult, SteptaskItem } from '@/features/touen/types/types' // 실제 경로로 조정
-import type { PayloadSteptaskSyouhin } from '@/api/touen/count/getSteptaskSyouhin'
-
-// 필요 시: 기존 로직 유지용(상품 초기화)
-// 경로는 프로젝트에 맞게 조정하세요.
-import { getInitialProductsForClient } from '@/features/touen/lib/getInitialProductsForClient'
-
-/** ---- 型定義 ---- */
-type ClassKey = `Class${Uppercase<string>}`
-type ClassHash = Partial<Record<ClassKey, string>>
-type PakuCustomHash = Partial<Record<`Custom${string | number}`, string>>
-type DescriptionKey = `Description${Uppercase<string>}`
-type DescriptionHash = Partial<Record<DescriptionKey, string>>
-
-export interface TouenItem {
-  ItemTitle?: string
-  タイトル?: string
-  UpdatedTime?: string
-  updatedTime?: string
-  ResultID?: string
-  ResultId?: string
-  SiteId?: string
-  ClassHash?: ClassHash
-  PakuCustomHash?: PakuCustomHash
-  DescriptionHash?: DescriptionHash
-}
-
-interface PreviewRow {
-  タイトル?: string
-  Title?: string
-  更新日時?: string
-  UpdatedTime?: string
-  updatedTime?: string
-}
-
-type ProductsMap = Record<string, Product[]>
-
-type UseTouenItemsParams = {
-  nearestClientName: string | null
-  previewRowsOnce: PreviewRow[] | null
-  customers: Customer[]
-  touenItems?: SteptaskItem[]
-  setTouenItems: Dispatch<SetStateAction<SteptaskItem[]>>
-  setItemObject: Dispatch<SetStateAction<ObjectResult>>
-  setProducts: Dispatch<SetStateAction<Product[]>>
-  setProductsMap: Dispatch<SetStateAction<ProductsMap>>
-  oneShotPerClient?: boolean
-}
-
-type UseTouenItemsReturn = {
-  listLoading: boolean
-  fetchComplete: boolean
-  stableFetchComplete: boolean
-  forceRefresh: (clientName?: string) => void
-}
-
-/** 値→タイムスタンプ（不正値は 0） */
-const ts = (v: unknown): number => {
-  const t = Date.parse(String(v ?? ''))
-  return Number.isFinite(t) ? t : 0
-}
-
-export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsReturn {
-  const { showBoundary } = useErrorBoundary()
-  const { getSteptaskSyouhin } = useTouenCount()
-
+/**
+ * - ページ内の状態・印刷処理・モーダル・数入力ポップアップなどを統合管理する
+ * - SSR(初期HTML生成)とクライアント側の相互作用を切り分けるため、表示系の一部はマウント後に制御する
+ */
+export default function TouenCount() {
+  // --- 1. 初期データ / ユーザー・顧客・位置情報のセットアップ ---
   const {
+    sessionUserName,
+    customers,
+    nearestClientName,
+    setNearestClientName,
+    sortedItems,
+    moyoriSaki,
+    onLocateNearest,
+    products,
+    setProducts,
+    setProductsMap,
+    itemObject,
+    setItemObject,
+    touenItems,
+    setTouenItems,
+    previewRowsOnce,
+  } = useTouenInitializer()
+
+  // --- 2. 登園商品の取得と読み込み状態 ---
+  const { listLoading, stableFetchComplete, forceRefresh } = useFetchTouenItems({
     nearestClientName,
     previewRowsOnce,
     customers,
@@ -296,211 +54,391 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
     setItemObject,
     setProducts,
     setProductsMap,
-    oneShotPerClient = true,
-  } = params
+  })
 
-  const [listLoading, setListLoading] = useState(false)
-  const [dataEvaluatedOnce, setDataEvaluatedOnce] = useState(false)
-  const [stableFetchComplete, setStableFetchComplete] = useState(false)
+  // --- 3. 印刷処理の管理 ---
+  const {
+    // loading,
+    printStatus,
+    setPrintStatus,
+    showToast,
+    setShowToast,
+    second,
+    setSecond,
+    handleClick,
+    onCancelPrint,
+    isPrintingRetrying,
+    setPrintDisabled,
+    isDisabled,
+    buttonStyle,
+  } = usePrintTouenOrder({
+    nearestClientName: nearestClientName ?? '',
+    products,
+    itemObject,
+    sessionUserName,
+  })
 
-  /** 実行済みタイムスタンプを得意先単位で保持 */
-  const ranForClientRef = useRef<Map<string, number>>(new Map())
+  // --- 4. 商品数の増減(+/-)処理 ---
+  const isIncrement = createIsIncrement({
+    hapticOn,
+    setProducts,
+    nearestClientName: nearestClientName ?? '',
+    setProductsMap,
+  })
 
-  /** fetchComplete がフレーム境界で安定したことを別フラグへ反映 */
+  // --- 5. 長押し・数量入力ポップアップの管理 ---
+  const {
+    selectedProduct,
+    setSelectedProduct,
+    showPopup,
+    setShowPopup,
+    inputRef,
+    handlePressStart,
+    handlePressEnd,
+    itemQtySave,
+  } = useManageTouenPopup({
+    setProducts,
+    setSecond,
+    setPrintStatus,
+    setShowToast,
+  })
+
+  // --- 6. トースト・モーダル・時間表示 ---
+  const todayTime = useNowTime(5000)
+  const [modalVisible, setModalVisible] = useState(false)
+  const [searchText, setSearchText] = useState('')
+
+  // iOS WKWebView 対策：ページ滞在中は body/html のスクロールを固定
+  useLockBodyScroll()
+
+  // クライアントマウント判定：ブラウザ限定UIの表示に利用
+  const [mounted, setMounted] = useState(false)
   useEffect(() => {
-    let rafId: number | null = null
-    if (!listLoading && dataEvaluatedOnce) {
-      rafId = requestAnimationFrame(() => setStableFetchComplete(true))
-    } else {
-      setStableFetchComplete(false)
-    }
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId)
-    }
-  }, [listLoading, dataEvaluatedOnce])
+    setMounted(true)
+  }, [])
 
-  /** 最寄り先が変わるたびにワンショット制御を解除 */
-  useEffect(() => {
-    if (nearestClientName) {
-      ranForClientRef.current.delete(nearestClientName)
-    }
-  }, [nearestClientName])
+  // --- 7. 条件付きUI要素の作成 ---
+  const popupElement =
+    showPopup && selectedProduct ? (
+      <ProductQuantityPopup
+        showPopup={showPopup}
+        setShowPopup={setShowPopup}
+        selectedProduct={selectedProduct}
+        setSelectedProduct={setSelectedProduct}
+        inputRef={inputRef}
+        itemQtySave={itemQtySave}
+      />
+    ) : null
 
-  /**
-   * ★ 1クライアント分を「TotalCount 取得 → 全ページ取得 → 結合」して返す
-   *   （旧 fetchSteptask 側の initialRes / totalCount ループをここに移動）
-   */
-  const fetchAllPagesForClient = useCallback(
-    async (clientName: string): Promise<SteptaskItem[]> => {
-      const pageSize = 200
+  const clientSearchModalElement = modalVisible ? (
+    <ClientSearchModal
+      searchText={searchText}
+      setSearchText={setSearchText}
+      sortedItems={sortedItems}
+      setNearestClientName={setNearestClientName}
+      setModalVisible={setModalVisible}
+      userLatitude={null}
+      userLongitude={null}
+      currentSelectedName={nearestClientName ?? undefined}
+    />
+  ) : null
 
-      // 1) TotalCount確認（PageSize=1）
-      const initialPayload: PayloadSteptaskSyouhin = {
-        Offset: 0,
-        PageSize: 1,
-        View: {
-          ColumnFilterHash: { Title: clientName },
-          ColumnFilterSearchTypes: { Title: 'ExactMatch' },
-        },
-      }
+  const toastElement = showToast ? (
+    <ToastPopup message={printStatus} setToast={setShowToast} position='center' second={second} />
+  ) : null
 
-      const initialRes = await getSteptaskSyouhin(initialPayload)
-      if (!initialRes || initialRes.code !== 200) {
-        throw new Error('Initial ITEMS_GET failed')
-      }
+  const printCancelButtonElement = isPrintingRetrying ? (
+    <div className='fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] text-white'>
+      <button
+        type='button' // フォーム送信を防ぐための明示的なタイプ指定
+        onClick={onCancelPrint}
+        className='px-5 py-2 rounded-full bg-black/90 border
+          border-gray-300 text-white shadow-md backdrop-blur-md active:translate-y-px'
+      >
+        🖨️ キャンセル
+      </button>
+    </div>
+  ) : null
 
-      const totalCount = initialRes.pagination?.TotalCount ?? 0
-      if (!Number.isFinite(totalCount)) {
-        throw new Error('TotalCount is invalid')
-      }
+  const { handleRefresh } = useTouenRefreshWithMinDisplay(async () => {
+    await forceRefresh(nearestClientName ?? undefined)
+  }, 1000)
 
-      // TotalCount=0
-      if (totalCount <= 0) return []
+  // --- 8. JSXレンダー ---
+  return (
+    <div className='bg-gray-100 overflow-hidden select-none flex flex-1 flex-col'>
+      {/* {loading && mounted ? <LoadingModal /> : null} */}
+      {popupElement}
+      {clientSearchModalElement}
 
-      // 2) 全ページ取得
-      const tasks: Promise<SteptaskItem[]>[] = []
-      for (let offset = 0; offset < totalCount; offset += pageSize) {
-        const payload: PayloadSteptaskSyouhin = {
-          ...initialPayload,
-          Offset: offset,
-          PageSize: pageSize,
-        }
-        tasks.push(
-          (async () => {
-            const res = await getSteptaskSyouhin(payload)
-            if (!res || res.code !== 200) return []
-            return res.data ?? []
-          })()
-        )
-      }
+      <div className='p-2 md:h-auto'>
+        {toastElement}
+        {printCancelButtonElement}
 
-      const pages = await Promise.all(tasks)
-      return pages.flat()
-    },
-    [getSteptaskSyouhin]
+        <ClientSelectorBox
+          nearestClientName={nearestClientName ?? undefined}
+          nearestClientData={moyoriSaki ?? ''}
+          onOpenModal={() => setModalVisible(true)}
+          onClientNameChange={name => setNearestClientName(name)}
+          onLocateNearest={onLocateNearest}
+        />
+
+        <div
+          className='
+            flex justify-center content-center mt-2 text-sm font-semibold 
+            bg-gray-200 border border-gray-300 w-[98%] text-center p-1 rounded-lg
+          '
+        >
+          {todayTime}
+        </div>
+
+        <ProductList
+          products={products}
+          listLoading={listLoading}
+          stableFetchComplete={stableFetchComplete}
+          handlePressStart={handlePressStart}
+          handlePressEnd={handlePressEnd}
+          isIncrement={isIncrement}
+          handleKeyDown={() => {}}
+          onSwipeUpRefresh={handleRefresh}
+        />
+
+        <PrintControlBar
+          handleClick={handleClick}
+          isDisabled={isDisabled}
+          buttonStyle={buttonStyle}
+          onChangePrintDisabled={setPrintDisabled}
+        />
+      </div>
+    </div>
   )
+}
 
-  /**
-   * 再取得の強制（得意先単位）
-   * index.tsx から forceRefresh(nearestClientName) を呼べるようにする
-   */
-  const forceRefresh = useCallback(
-    async (clientName?: string) => {
-      if (!clientName) return
-      setListLoading(true)
-      try {
-        const list = await fetchAllPagesForClient(clientName)
-        setTouenItems(list)
-        setDataEvaluatedOnce(true)
+```
 
-        // 旧ロジック維持: items から products / itemObject を生成
-        if (customers.length > 0) {
-          const products = await getInitialProductsForClient(
-            clientName,
-            customers,
-            touenItems ?? [],
-            obj => setItemObject(obj),
-            list // ★ override に “今回取得した list” を渡すのが重要
-          )
-          setProducts(products)
-          setProductsMap(prev => ({ ...prev, [clientName]: products }))
-        }
-      } catch (e) {
-        showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
-        console.error(e)
-        setDataEvaluatedOnce(true)
-      } finally {
-        setListLoading(false)
-        ranForClientRef.current.set(clientName, Date.now())
-      }
-    },
-    [
-      customers,
-      fetchAllPagesForClient,
-      setItemObject,
-      setProducts,
-      setProductsMap,
-      setTouenItems,
-      showBoundary,
-      touenItems,
-    ]
+```
+import type { Customer, Product } from '@/api/loadCustomerData'
+import type { ObjectResult, SteptaskItem } from '../types/types'
+
+// 得意先によって品物が異なるためのメソッド
+export const getInitialProductsForClient = async (
+  clientName: string,
+  customers: Customer[],
+  touenItems: SteptaskItem[],
+  setItemObject: (obj: ObjectResult) => void,
+  itemsOverride?: SteptaskItem[]
+): Promise<Product[]> => {
+  const tokuisakiIdFinder = customers.find(
+    el => String(el.得意先名).trim() === String(clientName).trim()
   )
+  const tokuisakiID = tokuisakiIdFinder?.ID
 
-  /**
-   * nearestClientName 変更時の自動取得（one-shot 制御あり）
-   * previewRowsOnce の更新日時と ranForClientRef を比較して抑制
-   */
-  useEffect(() => {
-    if (!nearestClientName || nearestClientName === '最寄り先を選択') return
-    if (!Array.isArray(customers) || customers.length === 0) return
+  const source = itemsOverride ?? touenItems
 
-    const rows: PreviewRow[] = previewRowsOnce ?? []
-    const rowForClient = rows.find(r => {
-      const title = r?.タイトル ?? r?.Title ?? ''
-      return String(title).trim() === String(nearestClientName).trim()
-    })
+  const selectedClientItem = source?.find(item => {
+    // ClassA 가 undefined일 수 있으므로 안전하게 문자열 비교
+    const classA = item?.ClassHash?.ClassA
+    return classA != null && tokuisakiID != null && String(classA) === String(tokuisakiID)
+  })
 
-    const currentPreviewTs = ts(
-      rowForClient?.更新日時 ?? rowForClient?.UpdatedTime ?? rowForClient?.updatedTime
+  if (!selectedClientItem) return []
+
+  // ====== 여기부터 "undefined object" 방어가 핵심 ======
+  const ClassHash = selectedClientItem.ClassHash ?? ({} as Record<string, string>)
+
+  const PakuCustomHash = selectedClientItem.PakuCustomHash ?? {}
+  const PakuCustomHashTwo = selectedClientItem.PakuCustomHashTwo ?? {}
+  const PakuCustomHashThree = selectedClientItem.PakuCustomHashThree ?? {}
+  const PakuCustomHashFour = selectedClientItem.PakuCustomHashFour ?? {}
+  const PakuCustomHashMasterIndex = selectedClientItem.PakuCustomHashMasterIndex ?? {}
+  // ====================================================
+
+  const formattedItems: string[] = []
+
+  const startCharCode = 'A'.charCodeAt(0)
+  const endCharCode = 'U'.charCodeAt(0)
+  const alphaList: string[] = []
+  const customAlphaList: string[] = []
+
+  for (let code = startCharCode; code < endCharCode; code += 2) {
+    alphaList.push(String.fromCharCode(code))
+  }
+  for (let code = startCharCode; code < endCharCode; code++) {
+    customAlphaList.push(String.fromCharCode(code))
+  }
+
+  let pendingCustom = ''
+  let pendingCustomTwo = ''
+  let pendingMasterIndex = ''
+  let lastCustomTwo = ''
+
+  // ===== A〜U のペア（CustomA〜） =====
+  for (let i = 0; i < alphaList.length; i++) {
+    const code = alphaList[i]
+    const customKey = `Custom${customAlphaList[i]}`
+
+    const name = String(PakuCustomHashThree?.[customKey] ?? '').trim()
+    const codeValue = String(PakuCustomHashFour?.[customKey] ?? '').trim()
+
+    const rawCustom = String(PakuCustomHash?.[customKey] ?? '').trim()
+    const rawCustomTwo = String(PakuCustomHashTwo?.[customKey] ?? '').trim()
+    const masterIndex = String(PakuCustomHashMasterIndex?.[customKey] ?? '').trim()
+
+    let customValue = rawCustom
+    let customValueTwo = rawCustomTwo
+    let customMasterIndex = masterIndex
+
+    if (!name && !codeValue) {
+      if (rawCustom) pendingCustom = rawCustom
+      if (rawCustomTwo) pendingCustomTwo = rawCustomTwo
+      if (masterIndex) pendingMasterIndex = masterIndex
+      continue
+    }
+
+    if (pendingCustom) {
+      customValue = pendingCustom
+      pendingCustom = rawCustom || ''
+    }
+    if (pendingCustomTwo) {
+      customValueTwo = pendingCustomTwo
+      pendingCustomTwo = rawCustomTwo || ''
+    }
+    if (pendingMasterIndex) {
+      customMasterIndex = pendingMasterIndex
+      pendingMasterIndex = masterIndex || ''
+    }
+
+    if (!customValueTwo && lastCustomTwo) customValueTwo = lastCustomTwo
+    if (customValueTwo) lastCustomTwo = customValueTwo
+
+    formattedItems.push(
+      `${codeValue}, ${name}, ${customValue}, ${customValueTwo}, ${customMasterIndex}`
     )
+  }
 
-    const lastTs = ranForClientRef.current.get(nearestClientName) ?? -1
-    if (oneShotPerClient && lastTs >= currentPreviewTs) return
+  // ===== U〜Z のペア（Custom001〜） =====
+  let pendingAlpha = ''
+  let pendingAlphaTwo = ''
+  let pendingAlphaMasterIndex = ''
+  let customIndex = 1
 
-    let aborted = false
-    setListLoading(true)
+  for (let ch = 'U'.charCodeAt(0); ch <= 'Z'.charCodeAt(0); ch += 2) {
+    const code = String.fromCharCode(ch)
+    const customKey = `Custom${String(customIndex).padStart(3, '0')}`
+    customIndex++
 
-    ;(async () => {
-      try {
-        const list = await fetchAllPagesForClient(nearestClientName)
-        if (aborted) return
+    const name = String(PakuCustomHashThree?.[customKey] ?? '').trim()
+    const codeValue = String(PakuCustomHashFour?.[customKey] ?? '').trim()
 
-        setTouenItems(list)
-        setDataEvaluatedOnce(true)
-        ranForClientRef.current.set(nearestClientName, currentPreviewTs)
+    const rawCustom = String(PakuCustomHash?.[customKey] ?? '').trim()
+    const rawCustomTwo = String(PakuCustomHashTwo?.[customKey] ?? '').trim()
+    const masterIndex = String(PakuCustomHashMasterIndex?.[customKey] ?? '').trim()
 
-        // 旧ロジック維持: items から products / itemObject を生成
-        const products = await getInitialProductsForClient(
-          nearestClientName,
-          customers,
-          touenItems ?? [],
-          obj => setItemObject(obj),
-          list
-        )
-        if (aborted) return
-        setProducts(products)
-        setProductsMap(prev => ({ ...prev, [nearestClientName]: products }))
-      } catch (e) {
-        if (!aborted) {
-          setDataEvaluatedOnce(true)
-          showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
-          console.error(e)
-        }
-      } finally {
-        if (!aborted) setListLoading(false)
-      }
-    })()
+    let customValue = rawCustom
+    let customValueTwo = rawCustomTwo
+    let customMasterIndex = masterIndex
 
-    return () => {
-      aborted = true
-      setListLoading(false)
+    if (!name && !codeValue) {
+      if (rawCustom) pendingAlpha = rawCustom
+      if (rawCustomTwo) pendingAlphaTwo = rawCustomTwo
+      if (masterIndex) pendingAlphaMasterIndex = masterIndex
+      continue
     }
-  }, [
-    nearestClientName,
-    previewRowsOnce,
-    customers,
-    oneShotPerClient,
-    fetchAllPagesForClient,
-    setTouenItems,
-    setItemObject,
-    setProducts,
-    setProductsMap,
-    showBoundary,
-    touenItems,
-  ])
 
-  const fetchComplete = !listLoading && dataEvaluatedOnce
-  return { listLoading, fetchComplete, stableFetchComplete, forceRefresh }
+    if (pendingAlpha) {
+      customValue = pendingAlpha
+      pendingAlpha = rawCustom || ''
+    }
+    if (pendingAlphaTwo) {
+      customValueTwo = pendingAlphaTwo
+      pendingAlphaTwo = rawCustomTwo || ''
+    }
+    if (pendingAlphaMasterIndex) {
+      customMasterIndex = pendingAlphaMasterIndex
+      pendingAlphaMasterIndex = masterIndex || ''
+    }
+
+    if (!customValueTwo && lastCustomTwo) customValueTwo = lastCustomTwo
+    if (customValueTwo) lastCustomTwo = customValueTwo
+
+    formattedItems.push(
+      `${codeValue}, ${name}, ${customValue}, ${customValueTwo}, ${customMasterIndex}`
+    )
+  }
+
+  // ===== デバッグ（Description001〜020 の 10件、Custom003〜） =====
+  let pendC1Queue: string[] = []
+  let pendC2Queue: string[] = []
+  let pendMIQueue: string[] = []
+
+  let lastC2 = ''
+  let lastMI = ''
+
+  const toStrTrim = (v: unknown): string =>
+    typeof v === 'string' ? v.trim() : String(v ?? '').trim()
+
+  for (let idx = 2; idx <= 10; idx++) {
+    const customKey = `Custom${String(idx + 2).padStart(3, '0')}`
+
+    const rawName = toStrTrim(PakuCustomHashThree?.[customKey])
+    const rawCode = toStrTrim(PakuCustomHashFour?.[customKey])
+    const rawC1 = toStrTrim(PakuCustomHash?.[customKey])
+    const rawC2 = toStrTrim(PakuCustomHashTwo?.[customKey])
+    const rawMI = toStrTrim(PakuCustomHashMasterIndex?.[customKey])
+
+    if (!rawName && !rawCode) {
+      if (rawC1) pendC1Queue.push(rawC1)
+      if (rawC2) pendC2Queue.push(rawC2)
+      if (rawMI) pendMIQueue.push(rawMI)
+      continue
+    }
+
+    const finalC1 = pendC1Queue.length > 0 ? (pendC1Queue.shift() as string) : rawC1
+    let finalC2 = pendC2Queue.length > 0 ? (pendC2Queue.shift() as string) : rawC2
+    let finalMI = pendMIQueue.length > 0 ? (pendMIQueue.shift() as string) : rawMI
+
+    if (!finalC2 && lastC2) finalC2 = lastC2
+    if (!finalMI && lastMI) finalMI = lastMI
+
+    formattedItems.push(`${rawCode}, ${rawName}, ${finalC1}, ${finalC2}, ${finalMI}`)
+
+    if (rawC1 && rawC1 !== finalC1) pendC1Queue.push(rawC1)
+    if (rawC2 && rawC2 !== finalC2) pendC2Queue.push(rawC2)
+    if (rawMI && rawMI !== finalMI) pendMIQueue.push(rawMI)
+
+    if (finalC2) lastC2 = finalC2
+    if (finalMI) lastMI = finalMI
+  }
+
+  // ===== objectResult の構築（既存通り） =====
+  const objectResult: ObjectResult = {
+    ResultID: String(ClassHash?.ClassA ?? ''),
+    storageCode: String((ClassHash as any)?.Custom001 ?? (ClassHash as any)?.CustomA ?? ''),
+  }
+
+  let validIndex = 1
+  formattedItems.forEach(item => {
+    const [productNumber, productName] = item?.split(',').map(str => str.trim()) ?? []
+    const isValid = productNumber && productName && productNumber !== '' && productName !== ''
+    if (isValid) {
+      objectResult[`item${validIndex}`] = item
+      validIndex++
+    }
+  })
+
+  setItemObject(objectResult)
+
+  return formattedItems.map((item, index) => {
+    const parts = item.split(',').map(s => s.trim())
+    const [, name, , destinationCode, narabijyun] = parts
+    return {
+      id: index + 1,
+      product_name: name ?? '',
+      quantity: 0,
+      destination_code: destinationCode ?? '',
+      narabijyun: narabijyun ?? '',
+    }
+  })
 }
 
 ```
