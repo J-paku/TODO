@@ -31,8 +31,7 @@ type TouenRow = {
   creator?: string
 }
 
-/** おむつ履歴テーブルの列定義（幅: 60% / 25% / 15% を固定） */
-// 日本語コメント: Touen の列幅は元の比率を維持しつつ固定化（table-layout: fixed が幅を尊重）
+/** おむつ履歴テーブルの列定義 */
 export const touenListColumns: HistoryTableColumn<TouenRow>[] = [
   {
     key: 'clients_name',
@@ -58,14 +57,13 @@ export const touenListColumns: HistoryTableColumn<TouenRow>[] = [
   },
 ]
 
-/** クレーム履歴テーブルの列定義（元の min-w を同値の w 固定へ変更） */
-// 日本語コメント: Claim の列幅は、既存の min-w[...] と同値の w[...] に置換して幅を固定化
+/** クレーム履歴テーブルの列定義 */
 export const claimHistoryColumns: HistoryTableColumn<ClaimClient>[] = [
   {
     key: 'status',
     label: '緊急度',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[15%]', // min-w -> w に変更
+    headerClassName: 'border border-gray-400 min-w-[15%]',
     cellClassName:
       'text-center border border-gray-300 truncate max-w-[100px] sm:max-w-none text-sm ',
     render: value => {
@@ -78,49 +76,49 @@ export const claimHistoryColumns: HistoryTableColumn<ClaimClient>[] = [
     key: 'clients_name',
     label: '得意先名',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[120px]', // min-w-[120px] -> w-[120px]
+    headerClassName: 'border border-gray-400 min-w-[120px]',
     cellClassName: 'text-center border border-gray-300 truncate sm:max-w-none text-xs',
   },
   {
     key: 'urgency',
     label: '状況',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[5px]', // min-w-[5px] -> w-[5px]
+    headerClassName: 'border border-gray-400 min-w-[5px]',
     cellClassName: 'text-center border border-gray-300 truncate sm:max-w-none font-bold text-sm ',
   },
   {
     key: 'category',
     label: 'カテゴリー',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[35px] whitespace-nowrap', // min-w -> w
+    headerClassName: 'border border-gray-400 min-w-[35px] whitespace-nowrap',
     cellClassName: 'text-center border border-gray-300 text-xs',
   },
   {
     key: 'claimContent',
     label: 'クレーム内容',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[50px] whitespace-nowrap', // min-w -> w
+    headerClassName: 'border border-gray-400 min-w-[50px] whitespace-nowrap',
     cellClassName: 'text-center border border-gray-300 text-xs',
   },
   {
     key: 'service',
     label: 'サービス',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[95px] whitespace-nowrap', // min-w -> w
+    headerClassName: 'border border-gray-400 min-w-[95px] whitespace-nowrap',
     cellClassName: 'text-center border border-gray-300 text-xs',
   },
   {
     key: 'serviceShohin',
     label: 'サービス内容',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[50px] whitespace-nowrap', // min-w -> w
+    headerClassName: 'border border-gray-400 min-w-[50px] whitespace-nowrap',
     cellClassName: 'text-center border border-gray-300 text-xs',
   },
   {
     key: 'created_date',
     label: '日付',
     align: 'center',
-    headerClassName: 'border border-gray-400 w-[20px]', // min-w -> w
+    headerClassName: 'border border-gray-400 min-w-[20px]',
     cellClassName: 'text-center border border-gray-300 text-xs',
     render: (_v, row) => (
       <>
@@ -376,7 +374,7 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
     }
   }, [openFilterKey, scrollContainerRef])
 
-  /** フィルタモーダル表示中は縦横スクロールをロック（重複維持） */
+  /** フィルタモーダル表示中は縦横スクロールをロック */
   useEffect(() => {
     const el = scrollContainerRef?.current
     if (!el) return
@@ -402,7 +400,9 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
     }
   }, [rows, scrollContainerRef])
 
-  /** スクロール位置監視＋iOSダブルタップ拡大防止＋プルダウンリフレッシュのイベント登録 */
+  /** スクロール位置の保存（行変更時の復元用） */
+
+  /* スクロール位置監視＋iOSダブルタップ拡大防止＋プルダウンリフレッシュのイベント登録 */
   useLayoutEffect(() => {
     const el = scrollContainerRef?.current
     if (!el) return
@@ -489,18 +489,16 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
   const touchMovedRef = useRef(false)
 
   return (
-    // 日本語コメント: 親幅に合わせて常に w-full、横スクロール禁止で列幅固定を徹底
     <div
       ref={scrollContainerRef}
       onTouchStart={handleGlobalTouchStart}
       onTouchMove={handleGlobalTouchMove}
       onTouchEnd={handleGlobalTouchEnd}
       onScroll={handleScroll}
-      className='w-full'
       style={{
         touchAction: 'manipulation',
         overflowY: openFilterKey ? 'hidden' : 'auto',
-        overflowX: 'hidden',
+        overflowX: openFilterKey ? 'hidden' : 'auto',
         height: '52vh',
       }}
     >
@@ -535,9 +533,8 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
         </span>
       </div>
 
-      {/* 日本語コメント: テーブルレイアウト固定（table-fixed）で内容量に影響されない */}
       <table
-        className='w-full table-fixed border-collapse select-none'
+        className='w-full border-collapse  select-none'
         style={{
           userSelect: 'none',
           WebkitUserSelect: 'none',
@@ -569,13 +566,12 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
               const isFiltered = filters[fieldKey] !== undefined
 
               return (
-                // 日本語コメント: ヘッダセルは溢れ対策を強制（幅固定時の視覚揺れ防止）
                 <th
                   key={col.key}
                   scope='col'
                   className={` ${alignClass(col.align)} ${col.headerClassName ?? ''} ${
                     isFiltered ? 'bg-[#3a6fb5]' : ''
-                  } overflow-hidden text-ellipsis whitespace-nowrap`}
+                  } `}
                 >
                   {/* フィルタ対象列の場合のみボタンを表示 */}
                   {isFilterable ? (
@@ -723,8 +719,8 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                       )}
                     </>
                   ) : (
-                    // フィルタ対象外列はラベルのみ表示（溢れ対策は維持）
-                    <div className='px-1 text-xs whitespace-nowrap overflow-hidden text-ellipsis'>
+                    // フィルタ対象外列はラベルのみ表示
+                    <div className='px-1 text-xs whitespace-nowrap'>
                       <span className='max-w-[80%] truncate'>{col.label}</span>
                     </div>
                   )}
@@ -828,10 +824,9 @@ function HistoryTableInner<T extends BaseRow = BaseRow>({
                 {columns.map(col => {
                   const value = row[col.key]
                   return (
-                    // 日本語コメント: すべてのセルに溢れ対策を適用し、内容量で幅が変わらないようにする
                     <td
                       key={String(col.key)}
-                      className={`${alignClass(col.align)} ${col.cellClassName ?? ''} overflow-hidden text-ellipsis whitespace-nowrap`}
+                      className={`${alignClass(col.align)} ${col.cellClassName ?? ''}`}
                     >
                       {col.render ? col.render(value, row) : value}
                     </td>
