@@ -1,47 +1,4 @@
 ```
-// api/touen/count/getSteptaskSyouhin.ts
-import { HttpRequest } from '@/hooks/useHttp'
-import { ApiResponse, axiosInstance } from '@/api'
-import axios from 'axios'
-import { TOUEN_API_ENDPOINTS } from '@/constants/api/touen'
-
-export type PayloadSteptaskSyouhin = {
-  ApiVersion: number
-  Offset: number
-  PageSize: number
-  View: {
-    ColumnFilterHash: { Title: string }
-    ColumnFilterSearchTypes: { Title: string }
-  }
-}
-
-export type SteptaskItemsGetResponse<T = any> = {
-  Response?: {
-    TotalCount?: number
-    Data?: T[]
-  }
-}
-
-export default async function getSteptaskSyouhin<T = any>(
-  httpRequest: HttpRequest,
-  payload: PayloadSteptaskSyouhin
-): Promise<ApiResponse<SteptaskItemsGetResponse<T>>> {
-  const response = await httpRequest(() =>
-    axiosInstance.post(TOUEN_API_ENDPOINTS.ITEMS_GET, payload)
-  )
-
-  if (axios.isAxiosError(response)) {
-    return { code: response.code ?? 500, message: response.message, data: undefined }
-  }
-
-  return {
-    code: 200,
-    message: 'api get success',
-    data: response?.data as SteptaskItemsGetResponse<T>,
-  }
-}
-
-```
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
