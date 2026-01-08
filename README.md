@@ -25,21 +25,19 @@ export default function useTouenCount() {
           response._error ?? response.message,
           JSON.stringify(payload)
         )
-        // エラーページに遷移する
         showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_MASTER_BULKUPSERT_ERROR))
       }
       return response
     },
-    [api, createErrorLog]
+    [api, createErrorLog, showBoundary]
   )
 
   const getTouenClientId = useMemo(
     () => async (resultId: string) => {
       const response = await api.touen.getTouenClientId(resultId)
-
       if (response.code !== 200) {
         openToast.error(response.message, 'center')
-        return
+        return undefined
       }
       return response.data
     },
@@ -51,12 +49,11 @@ export default function useTouenCount() {
       const response = await api.touen.getSelectedTouenPrice(payload)
       if (response.code !== 200) {
         openToast.error(response.message, 'center')
-        // await createErrorLog('getSelectedTouenPrice', response.message)
-        return
+        return undefined
       }
       return response.data
     },
-    [api, openToast, createErrorLog]
+    [api, openToast]
   )
 
   const getSteptaskSyouhin = useMemo(
@@ -64,8 +61,7 @@ export default function useTouenCount() {
       const response = await api.touen.getSteptaskSyouhin(payload)
       if (response.code !== 200) {
         openToast.error(response.message, 'center')
-        // await createErrorLog('getSelectedTouenPrice', response.message)
-        return
+        return undefined
       }
       return response.data
     },
