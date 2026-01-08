@@ -1,89 +1,78 @@
 ```
-import { HttpRequest } from '@/hooks/useHttp'
-import { ApiResponse, axiosInstance } from '@/api'
-import axios from 'axios'
-import { TOUEN_API_ENDPOINTS } from '@/constants/api/touen'
-export type PayloadSteptaskSyouhin = {
-  View: {
-    PageSize: number
-    Offset: number
-    ColumnFilterHash: {
-      Title: string
-    }
-    ColumnFilterSearchTypes: {
-      Title: string
-    }
-  }
-}
+// サービスレイヤー
+import { useMemo } from 'react'
+import { PayloadCreateTouenCount } from '@/api/touen/count/createTouenCount'
+import { PayloadSelectedTouenPrice } from '@/api/touen/count/getSelectedTouenPrice'
+import useHttp from '@/hooks/useHttp'
+import useToast from '@/hooks/useToast'
+import useSteptaskCreateErrorLog from '@/hooks/useSteptaskCreateErrorLog'
+import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
+import { useErrorBoundary } from 'react-error-boundary'
+import { PayloadSteptaskSyouhin } from '@/api/touen/count/getSteptaskSyouhin'
 
-export default async function getSteptaskSyouhin(
-  httpRequest: HttpRequest,
-  payload: PayloadSteptaskSyouhin
-): Promise<ApiResponse<string>> {
-  const response = await httpRequest(() =>
-    axiosInstance.post(TOUEN_API_ENDPOINTS.ITEMS_GET, payload)
+export default function useTouenCount() {
+  const { api } = useHttp()
+  const { openToast } = useToast()
+  const { showBoundary } = useErrorBoundary() // 404.tsxにリンクする（/ABC）
+  const { createErrorLog } = useSteptaskCreateErrorLog()
+
+  const createTouenCount = useMemo(
+    () => async (payload: PayloadCreateTouenCount) => {
+      const response = await api.touen.createTouenCount(payload)
+      if (response.code !== 200) {
+        await createErrorLog(
+          'createTouenCount',
+          response._error ?? response.message,
+          JSON.stringify(payload)
+        )
+        // エラーページに遷移する
+        showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_MASTER_BULKUPSERT_ERROR))
+      }
+      return response
+    },
+    [api, createErrorLog]
   )
-  if (axios.isAxiosError(response)) {
-    return {
-      code: response.code ?? 500,
-      message: response.message,
-      data: undefined,
-    }
-  }
-  return {
-    code: 200,
-    message: 'api get successed', //something wording
-    data: response?.data.Response.Data[0].仕入パック単価,
-  }
-}
-```
 
-```
-import { HttpRequest } from '@/hooks/useHttp'
-import { ApiResponse } from '@/api'
-import getTouenList, { PayloadGetTouenList } from './list/getTouenList'
-import createTouenCount, { PayloadCreateTouenCount } from './count/createTouenCount'
-import getTouenClientId from './count/getTouenClientId'
-import getSelectedTouenPrice, { PayloadSelectedTouenPrice } from './count/getSelectedTouenPrice'
-import deleteSelectedTouen from './list/deleteSelectedTouen'
-import { FilterTouenData, FilterTouenDataNotIn, TouenList } from './count/types'
-import getTouenStepTaskDataIn, {
-  PayloadGetTouenStepTaskDataIn,
-} from './list/getTouenStepTaskDataIn'
-import getTouenStepTaskDataNotIn, {
-  PayloadGetTouenStepTaskDataNotIn,
-} from './list/getTouenStepTaskDataNotIn'
+  const getTouenClientId = useMemo(
+    () => async (resultId: string) => {
+      const response = await api.touen.getTouenClientId(resultId)
 
-interface TouenApi {
-  // 登園カウント
-  createTouenCount: (payload: PayloadCreateTouenCount) => Promise<ApiResponse<string>>
-  getTouenClientId: (resultId: string) => Promise<ApiResponse<string>>
-  getSelectedTouenPrice: (payload: PayloadSelectedTouenPrice) => Promise<ApiResponse<string>>
-  getSteptaskSyouhin: (payload: PayloadCreateTouenCount) => Promise<ApiResponse<string>>
+      if (response.code !== 200) {
+        openToast.error(response.message, 'center')
+        return
+      }
+      return response.data
+    },
+    [api, openToast]
+  )
 
-  // 登園リスト
-  getTouenList: (
-    payload: PayloadGetTouenList<FilterTouenData | FilterTouenDataNotIn>
-  ) => Promise<ApiResponse<TouenList[]>>
-  getTouenStepTaskDataIn: (payload: PayloadGetTouenStepTaskDataIn) => Promise<ApiResponse<string>>
-  getTouenStepTaskDataNotIn: (
-    payload: PayloadGetTouenStepTaskDataNotIn
-  ) => Promise<ApiResponse<string>>
-  deleteSelectedTouen: (result: string) => Promise<ApiResponse<string>>
+  const getSelectedTouenPrice = useMemo(
+    () => async (payload: PayloadSelectedTouenPrice) => {
+      const response = await api.touen.getSelectedTouenPrice(payload)
+      if (response.code !== 200) {
+        openToast.error(response.message, 'center')
+        // await createErrorLog('getSelectedTouenPrice', response.message)
+        return
+      }
+      return response.data
+    },
+    [api, openToast, createErrorLog]
+  )
+
+  const getSteptaskSyouhin = useMemo(
+    () => async (payload: PayloadSteptaskSyouhin) => {
+      const response = await api.touen.getSteptaskSyouhin(payload)
+      // if (response.code !== 200) {
+      //   openToast.error(response.message, 'center')
+      //   // await createErrorLog('getSelectedTouenPrice', response.message)
+      //   return
+      // }
+      return response.data
+    },
+    [api, openToast]
+  )
+
+  return { createTouenCount, getTouenClientId, getSelectedTouenPrice, getSteptaskSyouhin }
 }
 
-export default function touen(httpRequest: HttpRequest): TouenApi {
-  return {
-    // 登園カウント
-    createTouenCount: payload => createTouenCount(httpRequest, payload),
-    getTouenClientId: resultId => getTouenClientId(httpRequest, resultId),
-    getSelectedTouenPrice: payload => getSelectedTouenPrice(httpRequest, payload),
-
-    // 登園リスト
-    getTouenList: payload => getTouenList(httpRequest, payload),
-    getTouenStepTaskDataIn: payload => getTouenStepTaskDataIn(httpRequest, payload),
-    getTouenStepTaskDataNotIn: payload => getTouenStepTaskDataNotIn(httpRequest, payload),
-    deleteSelectedTouen: resultId => deleteSelectedTouen(httpRequest, resultId),
-  }
-}
-```
+````
