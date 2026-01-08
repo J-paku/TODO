@@ -6,33 +6,11 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { Customer, Product } from '@/api/loadCustomerData'
 import { TOUEN_NEW_ERROR_MESSAGES } from '@/constants/api/touen'
 import { useErrorBoundary } from 'react-error-boundary'
-import useTouenCount from '@/hooks/useTouenCountActions' // 프로젝트에서 실제 경로에 맞게 유지/조정
-import type {
-  PayloadSteptaskSyouhin,
-  StepTaskItemsGetResponse,
-} from '@/api/touen/count/getSteptaskSyouhin'
+import useTouenCount from './useTouenCountActions' // 실제 경로에 맞게 유지/조정
+import type { ObjectResult, SteptaskItem } from '../types/types'
 
 /** ---- 型定義 ---- */
-type ClassKey = `Class${Uppercase<string>}` // 'ClassA' ~
-type ClassHash = Partial<Record<ClassKey, string>>
-type PakuCustomHash = Partial<Record<`Custom${string | number}`, string>>
-type DescriptionKey = `Description${Uppercase<string>}` // 'DescriptionA' ~
-type DescriptionHash = Partial<Record<DescriptionKey, string>>
-
-export interface TouenItem {
-  ItemTitle?: string
-  タイトル?: string
-  UpdatedTime?: string
-  updatedTime?: string
-  ResultID?: string
-  ResultId?: string
-  SiteId?: string
-  ClassHash?: ClassHash
-  PakuCustomHash?: PakuCustomHash
-  DescriptionHash?: DescriptionHash
-  // StepTaskの他フィールドがあっても問題ない（unknown拡張）
-  [key: string]: unknown
-}
+type ProductsMap = Record<string, Product[]>
 
 interface PreviewRow {
   タイトル?: string
@@ -42,20 +20,20 @@ interface PreviewRow {
   updatedTime?: string
 }
 
-type ProductsMap = Record<string, Product[]>
-
 type UseTouenItemsParams = {
   /** 最寄り先名（未選択時は null） */
   nearestClientName: string | null
   /** 一度だけ取得されたプレビュー行 */
   previewRowsOnce: PreviewRow[] | null
   customers: Customer[]
-  /** 互換維持のため: 本フック内では参照しない（外部状態のみ更新） */
-  touenItems?: TouenItem[]
-  setTouenItems: Dispatch<SetStateAction<TouenItem[]>>
-  setItemObject: Dispatch<SetStateAction<Record<string, unknown>>>
+
+  /** index.tsx 互換維持 */
+  touenItems?: SteptaskItem[]
+  setTouenItems: Dispatch<SetStateAction<SteptaskItem[]>>
+  setItemObject: Dispatch<SetStateAction<ObjectResult>>
   setProducts: Dispatch<SetStateAction<Product[]>>
   setProductsMap: Dispatch<SetStateAction<ProductsMap>>
+
   oneShotPerClient?: boolean
 }
 
@@ -67,7 +45,6 @@ type UseTouenItemsReturn = {
 }
 
 /** ---- ユーティリティ ---- */
-/** 値→タイムスタンプ（不正値は 0） */
 const ts = (v: unknown): number => {
   const t = Date.parse(String(v ?? ''))
   return Number.isFinite(t) ? t : 0
@@ -86,10 +63,25 @@ const getPreviewTsForClient = (rows: PreviewRow[], clientName: string): number =
   return ts(rowForClient?.更新日時 ?? rowForClient?.UpdatedTime ?? rowForClient?.updatedTime)
 }
 
-/**
- * StepTask ITEMS_GET を「TotalCount→全件ページング」して配列で返す
- * - api/touen/count/getSteptaskSyouhin.ts は Response{TotalCount,Data} を保持して返す前提
- */
+/** StepTask ITEMS_GET payload (당신 프로젝트의 실제 payload 형태로 맞춰서 사용) */
+type PayloadSteptaskSyouhin = {
+  ApiVersion: number
+  Offset: number
+  PageSize: number
+  View: {
+    ColumnFilterHash: { Title: string }
+    ColumnFilterSearchTypes: { Title: string }
+  }
+}
+
+/** StepTask response 최소 형태(타입 충돌 방지용) */
+type StepTaskItemsGetResponse<T> = {
+  Response?: {
+    TotalCount?: number
+    Data?: T[]
+  }
+}
+
 const buildInitialPayload = (clientName: string): PayloadSteptaskSyouhin => ({
   ApiVersion: 1.1,
   Offset: 0,
@@ -110,7 +102,6 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
     previewRowsOnce,
     customers,
     setTouenItems,
-    // 下記は互換維持: 現状このフック内では参照しない
     setItemObject,
     setProducts,
     setProductsMap,
@@ -121,10 +112,7 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   const [dataEvaluatedOnce, setDataEvaluatedOnce] = useState(false)
   const [stableFetchComplete, setStableFetchComplete] = useState(false)
 
-  /**
-   * 実行済みタイムスタンプを得意先単位で保持
-   * - 「プレビュー更新日時 <= 最後に取得した日時」なら再取得しない
-   */
+  /** 実行済みタイムスタンプを得意先単位で保持 */
   const ranForClientRef = useRef<Map<string, number>>(new Map())
 
   /** fetchComplete がフレーム境界で安定したことを別フラグへ反映 */
@@ -148,51 +136,40 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   }, [nearestClientName])
 
   /**
-   * customers がロードされたら「現状の nearestClientName が有効なら」その得意先で一度取得
-   * - 以前の実装は forceRefresh() が何もせず終了していたため「何も取れない」状態になりやすかった
-   */
-  useEffect(() => {
-    if (customers.length <= 0) return
-    if (!isValidClientName(nearestClientName)) return
-    // customersが揃ったタイミングで、現得意先を強制取得（旧挙動に近い）
-    forceRefresh(nearestClientName)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customers.length])
-
-  /**
-   * 実データ取得（TotalCount→全件）
-   * - ここを「元の getSteptaskSyouhin の取得部分」をフック側に寄せた形
+   * StepTask ITEMS_GET を「TotalCount→全件ページング」して配列で返す
+   * 注意: useTouenCount().getSteptaskSyouhin は “Response(TotalCount/Data)” を返す前提
    */
   const fetchAllPages = useCallback(
-    async (clientName: string): Promise<TouenItem[]> => {
+    async (clientName: string): Promise<SteptaskItem[]> => {
       const pageSize = 200
 
-      // 1) TotalCount 取得
       const initialPayload = buildInitialPayload(clientName)
-      const initialRes: StepTaskItemsGetResponse<TouenItem> | undefined =
-        await getSteptaskSyouhin<TouenItem>(initialPayload)
+
+      // 1) TotalCount
+      const initialResUnknown = await getSteptaskSyouhin(initialPayload as any)
+      const initialRes = initialResUnknown as StepTaskItemsGetResponse<SteptaskItem> | undefined
 
       const totalCount = initialRes?.Response?.TotalCount
       if (typeof totalCount !== 'number') {
         throw new Error('StepTask TotalCount が不正です')
       }
 
-      // 2) ページング取得
-      const requests: Promise<StepTaskItemsGetResponse<TouenItem> | undefined>[] = []
+      // 2) 全ページ
+      const reqs: Promise<unknown>[] = []
       for (let offset = 0; offset < totalCount; offset += pageSize) {
         const payload: PayloadSteptaskSyouhin = {
           ...initialPayload,
           Offset: offset,
           PageSize: pageSize,
         }
-        requests.push(getSteptaskSyouhin<TouenItem>(payload))
+        reqs.push(getSteptaskSyouhin(payload as any))
       }
 
-      const responses = await Promise.all(requests)
-      const list: TouenItem[] = responses.flatMap(r => r?.Response?.Data ?? [])
-
-      // 3) ここで item 加工が必要ならこの位置に入れる（現時点では「取得ロジック移植」に集中）
-      //    - 以前の巨大 getSteptaskSyouhin 内の per-item 加工をここへ移植する場合もここが正しい場所
+      const resList = await Promise.all(reqs)
+      const list = resList.flatMap(r => {
+        const rr = r as StepTaskItemsGetResponse<SteptaskItem> | undefined
+        return rr?.Response?.Data ?? []
+      })
 
       return list
     },
@@ -200,8 +177,8 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   )
 
   /**
-   * 再取得の強制（得意先単位 or 現得意先）
-   * - clientName 未指定の場合は nearestClientName を使う（「何も取れない」回避）
+   * 強制再取得
+   * - clientName 未指定なら nearestClientName を使う（「何も取れない」対策）
    */
   const forceRefresh = useCallback(
     async (clientName?: string) => {
@@ -224,7 +201,6 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
         showBoundary(new Error(TOUEN_NEW_ERROR_MESSAGES.TRANSACTION_SYOUHINBETSU_MASTER_GET_ERROR))
       } finally {
         setListLoading(false)
-        // 強制取得は「今」基準で stamp
         ranForClientRef.current.set(target, Date.now())
       }
     },
@@ -232,14 +208,24 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
   )
 
   /**
-   * nearestClientName / previewRowsOnce 変化での自動取得（ワンショット制御あり）
-   * - “元の動き” を維持するため、プレビュー更新日時を見て必要時だけ取り直す
+   * customers 로드 이후, 현재 nearestClientName 이 유효하면 한번 강제 로드
+   * (이전 코드에서 forceRefresh()가 “아무것도 안 하는” 버그였던 부분 해결)
+   */
+  useEffect(() => {
+    if (customers.length <= 0) return
+    if (!isValidClientName(nearestClientName)) return
+    forceRefresh(nearestClientName)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers.length])
+
+  /**
+   * nearestClientName / previewRowsOnce 변화에 따른 자동 로드 (oneShot 제어)
    */
   useEffect(() => {
     if (!isValidClientName(nearestClientName)) return
     if (!Array.isArray(customers) || customers.length === 0) return
 
-    const rows: PreviewRow[] = previewRowsOnce ?? []
+    const rows = previewRowsOnce ?? []
     const currentPreviewTs = getPreviewTsForClient(rows, nearestClientName)
 
     const lastTs = ranForClientRef.current.get(nearestClientName) ?? -1
@@ -279,6 +265,7 @@ export function useFetchTouenItems(params: UseTouenItemsParams): UseTouenItemsRe
     fetchAllPages,
     setTouenItems,
     showBoundary,
+    // 互換のため依存関係に残す（index側のstateセットと整合）
     setItemObject,
     setProducts,
     setProductsMap,
