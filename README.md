@@ -1,48 +1,26 @@
-# indexedDB.ts 요약
+# 왜 `pages/` 안에 컴포넌트가 있어도 빌드가 되는가
 
-## 개요
-- IndexedDB 사용 유틸리티 모듈.
-- `PipitAppDB`(운영) / `PipitAppDB_TEST`(그 외)로 DB명을 분기.
-- 단일 ObjectStore `Favorites` 사용.
-- 스키마 최소 버전 `SCHEMA_VERSION = 4`.
+결론: `pages/`에 있어도 **모든 파일이 페이지로 빌드되는 건 아니다**.  
+이 프로젝트는 `next.config.mjs`에서 페이지로 인식할 확장자를 제한하고 있다.
 
-## 핵심 흐름
-- `canUseIndexedDB()`로 사용 가능 여부의 1차 체크.
-- `readExistingVersion()`으로 현재 DB 버전 읽기(타임아웃 포함).
-- `openWithVersion()`에서 `onupgradeneeded`로 스키마 생성, `onblocked`/에러 시 자동 복구(삭제 후 재시도).
-- `getDBUnsafe()`는 예외를 그대로 throw, `getDB()`는 실패 시 `null` 반환(안전 래퍼).
-- `dbPromise`로 DB 연결을 싱글톤 관리하며 실패 시 초기화.
+## 핵심 설정
+`next.config.mjs`에서:
 
-## 저장/조회 API
-- 공통: 모두 `getDB()` 사용, 실패 시 경고 로그만 남기고 조용히 종료.
-- `setMenuOrder(key, order: string[])`
-  - JSON 직렬화 후 `lz-string`으로 UTF-16 압축해 저장.
-- `getMenuOrder(key)`
-  - 저장값이 JSON 문자열인지 확인 후 복원.
-- `setFavorite(key, value: string)`
-- `getFavorite(key)`
-- `removeFavorite(key)`
-- `setMenuOrderObject<T>(key, data: T)`
-  - 임의 객체를 JSON + 압축 저장.
-- `getMenuOrderObject<T>(key)`
-  - JSON 문자열이면 그대로 파싱, 아니면 압축 해제 후 파싱.
-- `deleteMenuOrderObject(key)`
+- `pageExtensions: ['tsx', 'page.tsx', 'page.jsx', 'page.js']`
 
-## 사용자 정보 캐시
-- `setUserInfoCache<T>(value)`
-  - IndexedDB 저장 실패 시 `sessionStorage`로 폴백.
-- `getUserInfoCache<T>()`
-  - IndexedDB → `sessionStorage` 순서로 조회.
-- `removeUserInfoCache()`
-  - IndexedDB 삭제 실패 시 `sessionStorage` 삭제 시도.
+이 의미는:
+- `pages/` 아래라도 **확장자가 위 리스트에 포함된 파일만** 라우트(페이지) 후보가 된다.
+- 따라서 `pages/claim/foo.ts` 같은 파일은 **페이지가 아니다** → 빌드 통과.
+- `pages/claim/foo.tsx`는 **페이지 후보** → `default export` React 컴포넌트가 필요.
 
-## 진단/복구
-- `probeIndexedDBRoundTrip()`
-  - IndexedDB 왕복 저장/조회 가능 여부 확인.
-  - 실패 시 `sessionStorage`로 대체 검사.
-- `resetDbSingletonForDebug()`
-  - 싱글톤 DB 연결 강제 초기화.
+## 그래서 빌드가 되는 이유
+- `pages/claim` 내부의 컴포넌트 파일들이
+  - `.ts` 확장자라서 페이지로 인식되지 않거나
+  - `.tsx`인데도 `default export`로 컴포넌트가 있어서 유효한 페이지이기 때문.
 
-## 주의 포인트
-- `onblocked` 발생 시 자동 DB 삭제 후 재오픈을 시도(특히 Safari/WKWebView 대응).
-- 실패 시 앱 전체가 죽지 않도록 대부분 안전하게 `null`/경고 로그로 처리.
+## 요약
+- **페이지 인식 규칙은 확장자 기준**
+- **`default export` 필요 조건은 “페이지로 인식된 파일”에만 적용**
+- 그래서 `pages/` 안에 컴포넌트가 있어도 빌드는 정상 통과할 수 있다
+
+참고 파일: `PiPiT-web/next.config.mjs`
